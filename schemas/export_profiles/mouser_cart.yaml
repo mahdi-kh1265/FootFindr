@@ -1,0 +1,13 @@
+name: mouser_cart
+kind: cart
+format: csv
+supplier: mouser
+columns:
+  - name: Mouser Part Number
+    source: MouserPN
+  - name: Quantity
+    source: need_to_buy
+  - name: Customer Part Number
+    source: InternalPN
+  - name: Customer Reference
+    source: references

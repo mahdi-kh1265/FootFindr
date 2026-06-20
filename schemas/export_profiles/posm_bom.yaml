@@ -1,0 +1,39 @@
+name: posm
+kind: bom
+format: csv
+exclude_dnp: true
+group_by:
+  - InternalPN
+columns:
+  - name: Quantity
+    source: quantity
+  - name: References
+    source: references
+  - name: Value
+    source: Value
+  - name: InternalPN
+    source: InternalPN
+  - name: MPN
+    source: MPN
+  - name: Manufacturer
+    source: Manufacturer
+  - name: Footprint
+    source: Footprint
+  - name: Package
+    source: Package
+  - name: DKPN
+    source: DKPN
+  - name: MouserPN
+    source: MouserPN
+  - name: LCSC Part #
+    source: LCSC Part #
+  - name: InventoryAvailable
+    source: inventory_available
+  - name: NeedToBuy
+    source: need_to_buy
+  - name: UnitPrice
+    source: unit_price
+  - name: ExtendedPrice
+    source: extended_price
+  - name: Notes
+    source: Notes

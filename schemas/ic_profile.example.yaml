@@ -1,0 +1,41 @@
+# Example IC profile. These are reviewed/approved structured datasheet/eval-board facts.
+
+ic: TPS7A4700
+manufacturer: Texas Instruments
+aliases:
+  - TPS7A4700RGW
+profile_status: draft   # draft | approved | deprecated
+package:
+  name: VQFN-20
+  footprint: Package_DFN_QFN:Texas_S-PVQFN-N20_EP3.5x3.5mm
+pins:
+  IN:
+    type: power_input
+    voltage_policy: connected_rail
+    support_parts:
+      - kind: capacitor
+        role: input_bypass
+        value: 10uF
+        voltage_policy: 2x_pin_voltage
+        preferred_packages: [0805, 1206]
+        required: true
+  OUT:
+    type: power_output
+    voltage_policy: configured_output_voltage
+    support_parts:
+      - kind: capacitor
+        role: output_bypass
+        value: 10uF
+        voltage_policy: 2x_output_voltage
+        preferred_packages: [0805, 1206]
+        required: true
+  EN:
+    type: logic_input
+    common_support:
+      - kind: resistor
+        role: pullup_or_pulldown
+        preferred_package: 0603
+sources:
+  - type: datasheet
+    local_path: footfindr_data/datasheets/TPS7A4700/datasheet.pdf
+    notes: "Draft profile; verify before approval."

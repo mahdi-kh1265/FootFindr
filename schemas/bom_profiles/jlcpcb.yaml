@@ -1,0 +1,26 @@
+# JLCPCB BOM Profile - Variant B (Fabrication-Toolkit / LCSC-aware)
+# Compatible with JLCPCB assembly service.
+# If LCSC Part # is missing, BOM is still generated with a warning.
+
+description: "JLCPCB assembly BOM - LCSC-aware with Quantity and Value"
+group_by: value_footprint
+exclude_dnp: true
+warn_missing:
+  - Footprint
+
+columns:
+  - name: Designator
+    source: designator
+    default: ""
+  - name: Footprint
+    source: package
+    default: ""
+  - name: Quantity
+    source: quantity
+    default: ""
+  - name: Value
+    source: value
+    default: ""
+  - name: "LCSC Part #"
+    source: lcsc_pn
+    default: ""

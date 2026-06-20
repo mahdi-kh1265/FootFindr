@@ -1,0 +1,79 @@
+raw_rows: 9223
+imported_parts: 9223
+skipped_rows: 0
+product_status_counts:
+  In Production: 9223
+package_counts:
+  '0201': 3369
+  '01005': 2805
+  008004: 845
+  '0402': 586
+  0805: 545
+  '1206': 543
+  '0603': 334
+  '1210': 139
+  '1812': 22
+  '2220': 22
+  '1808': 13
+voltage_counts:
+  25V: 2327
+  50V: 2106
+  16V: 1608
+  100V: 1069
+  10V: 645
+  6.3V: 472
+  630V: 300
+  250V: 219
+  1000V: 166
+  4V: 144
+  2.5V: 58
+  35V: 42
+  1250V: 25
+  2000V: 17
+  3150V: 13
+  500V: 7
+  63V: 5
+dielectric_counts:
+  C0G: 4146
+  CH: 1921
+  X5R: 659
+  X7R: 587
+  B: 411
+  CJ: 342
+  CK: 297
+  X6S: 226
+  U2J: 199
+  R: 176
+  X7S: 70
+  X7T: 56
+  UJ: 48
+  SL: 40
+  X6T: 30
+  X7U: 5
+  X5T: 4
+  X5S: 4
+  X8L: 2
+unmapped_size_codes: []
+unmapped_dimension_pairs: []
+warnings: []
+examples:
+  imported_mpns:
+  - GRM0115C1C100GE01
+  - GRM0115C1C100JE01
+  - GRM0115C1C101GE01
+  - GRM0115C1C101JE01
+  - GRM0115C1C110GE01
+  - GRM0115C1C110JE01
+  - GRM0115C1C120GE01
+  - GRM0115C1C120JE01
+  - GRM0115C1C130GE01
+  - GRM0115C1C130JE01
+  skipped_rows: []
+parser_version: 1.0.0
+generated_at: '2026-06-19T19:48:59.716433+00:00'
+source_file: murata-grm.csv
+source_type: manual_csv
+real_source: true
+source_sha256: 1f798c706471cc598803f5195566a3a36a0ed44c063bf7c8aedc2320deef013e
+parser_name: MurataGRMParser
+parser_slug: murata-grm

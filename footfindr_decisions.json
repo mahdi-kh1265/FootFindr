@@ -1,0 +1,293 @@
+{
+  "footfindr_version": "0.1.0",
+  "timestamp": "2026-06-19T16:58:34.084245+00:00",
+  "schematic": "examples/simple_board.kicad_sch",
+  "summary": {
+    "AUTO": 8,
+    "UNCHANGED": 1,
+    "total": 9,
+    "applied": 8
+  },
+  "decisions": [
+    {
+      "ref": "C1",
+      "status": "AUTO",
+      "confidence": 0.95,
+      "component_value": "100nF",
+      "component_category": "capacitor",
+      "selected_internal_pn": "CAP-100N-16V-X7R-0603",
+      "selected_mpn": "TBD",
+      "selected_footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "fields_to_write": {
+        "Footprint": "Capacitor_SMD:C_0603_1608Metric",
+        "InternalPN": "CAP-100N-16V-X7R-0603",
+        "MPN": "TBD",
+        "Manufacturer": "Murata",
+        "Package": "0603",
+        "VoltageRating": "16V",
+        "Tolerance": "10%",
+        "Dielectric": "X7R",
+        "FootFindrStatus": "AUTO",
+        "FootFindrConfidence": "0.95",
+        "FootFindrReason": "Approved 100nF cap: CAP-100N-16V-X7R-0603"
+      },
+      "old_fields": {
+        "Datasheet": "~"
+      },
+      "reasons": [
+        "Single approved match for 100nF -> CAP-100N-16V-X7R-0603 (0603, 16V)"
+      ],
+      "warnings": [],
+      "errors": [],
+      "source_library": null,
+      "applied": true
+    },
+    {
+      "ref": "C2",
+      "status": "AUTO",
+      "confidence": 0.95,
+      "component_value": "10uF",
+      "component_category": "capacitor",
+      "selected_internal_pn": "CAP-10U-16V-X7R-0805",
+      "selected_mpn": "TBD",
+      "selected_footprint": "Capacitor_SMD:C_0805_2012Metric",
+      "fields_to_write": {
+        "Footprint": "Capacitor_SMD:C_0805_2012Metric",
+        "InternalPN": "CAP-10U-16V-X7R-0805",
+        "MPN": "TBD",
+        "Manufacturer": "Samsung",
+        "Package": "0805",
+        "VoltageRating": "16V",
+        "Tolerance": "10%",
+        "Dielectric": "X7R",
+        "FootFindrStatus": "AUTO",
+        "FootFindrConfidence": "0.95",
+        "FootFindrReason": "Approved 10uF cap: CAP-10U-16V-X7R-0805"
+      },
+      "old_fields": {
+        "Datasheet": "~"
+      },
+      "reasons": [
+        "Single approved match for 10uF -> CAP-10U-16V-X7R-0805 (0805, 16V)"
+      ],
+      "warnings": [],
+      "errors": [],
+      "source_library": null,
+      "applied": true
+    },
+    {
+      "ref": "C3",
+      "status": "AUTO",
+      "confidence": 0.95,
+      "component_value": "1uF",
+      "component_category": "capacitor",
+      "selected_internal_pn": "CAP-1U-16V-X7R-0603",
+      "selected_mpn": "TBD",
+      "selected_footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "fields_to_write": {
+        "Footprint": "Capacitor_SMD:C_0603_1608Metric",
+        "InternalPN": "CAP-1U-16V-X7R-0603",
+        "MPN": "TBD",
+        "Manufacturer": "Murata",
+        "Package": "0603",
+        "VoltageRating": "16V",
+        "Tolerance": "10%",
+        "Dielectric": "X7R",
+        "FootFindrStatus": "AUTO",
+        "FootFindrConfidence": "0.95",
+        "FootFindrReason": "Approved 1uF cap: CAP-1U-16V-X7R-0603"
+      },
+      "old_fields": {
+        "Datasheet": "~"
+      },
+      "reasons": [
+        "Single approved match for 1uF -> CAP-1U-16V-X7R-0603 (0603, 16V)"
+      ],
+      "warnings": [],
+      "errors": [],
+      "source_library": null,
+      "applied": true
+    },
+    {
+      "ref": "C4",
+      "status": "UNCHANGED",
+      "confidence": 1.0,
+      "component_value": "10uF",
+      "component_category": "capacitor",
+      "selected_internal_pn": null,
+      "selected_mpn": null,
+      "selected_footprint": null,
+      "fields_to_write": {},
+      "old_fields": {},
+      "reasons": [
+        "FootFindrLocked=true"
+      ],
+      "warnings": [],
+      "errors": [],
+      "source_library": null,
+      "applied": false
+    },
+    {
+      "ref": "C5",
+      "status": "AUTO",
+      "confidence": 0.99,
+      "component_value": "10uF",
+      "component_category": "capacitor",
+      "selected_internal_pn": "CAP-10U-16V-X7R-0805",
+      "selected_mpn": "TBD",
+      "selected_footprint": "Capacitor_SMD:C_0805_2012Metric",
+      "fields_to_write": {
+        "Footprint": "Capacitor_SMD:C_0805_2012Metric",
+        "InternalPN": "CAP-10U-16V-X7R-0805",
+        "MPN": "TBD",
+        "Manufacturer": "Samsung",
+        "Package": "0805",
+        "VoltageRating": "16V",
+        "Tolerance": "10%",
+        "Dielectric": "X7R",
+        "FootFindrStatus": "AUTO",
+        "FootFindrConfidence": "0.99",
+        "FootFindrReason": "Exact InternalPN match: CAP-10U-16V-X7R-0805"
+      },
+      "old_fields": {
+        "Datasheet": "~",
+        "InternalPN": "CAP-10U-16V-X7R-0805"
+      },
+      "reasons": [
+        "Exact InternalPN match -> CAP-10U-16V-X7R-0805"
+      ],
+      "warnings": [],
+      "errors": [],
+      "source_library": null,
+      "applied": true
+    },
+    {
+      "ref": "R1",
+      "status": "AUTO",
+      "confidence": 0.95,
+      "component_value": "10k",
+      "component_category": "resistor",
+      "selected_internal_pn": "RES-10K-1PCT-0603",
+      "selected_mpn": "TBD",
+      "selected_footprint": "Resistor_SMD:R_0603_1608Metric",
+      "fields_to_write": {
+        "Footprint": "Resistor_SMD:R_0603_1608Metric",
+        "InternalPN": "RES-10K-1PCT-0603",
+        "MPN": "TBD",
+        "Manufacturer": "Yageo",
+        "Package": "0603",
+        "PowerRating": "0.1W",
+        "Tolerance": "1%",
+        "FootFindrStatus": "AUTO",
+        "FootFindrConfidence": "0.95",
+        "FootFindrReason": "Approved 10k resistor: RES-10K-1PCT-0603"
+      },
+      "old_fields": {
+        "Datasheet": "~"
+      },
+      "reasons": [
+        "Single approved match for 10k -> RES-10K-1PCT-0603 (0603, 0.1W)"
+      ],
+      "warnings": [],
+      "errors": [],
+      "source_library": null,
+      "applied": true
+    },
+    {
+      "ref": "R2",
+      "status": "AUTO",
+      "confidence": 0.95,
+      "component_value": "271",
+      "component_category": "resistor",
+      "selected_internal_pn": "RES-271R-1PCT-0603",
+      "selected_mpn": "TBD",
+      "selected_footprint": "Resistor_SMD:R_0603_1608Metric",
+      "fields_to_write": {
+        "Footprint": "Resistor_SMD:R_0603_1608Metric",
+        "InternalPN": "RES-271R-1PCT-0603",
+        "MPN": "TBD",
+        "Manufacturer": "Yageo",
+        "Package": "0603",
+        "PowerRating": "0.1W",
+        "Tolerance": "1%",
+        "FootFindrStatus": "AUTO",
+        "FootFindrConfidence": "0.95",
+        "FootFindrReason": "Approved 271R resistor: RES-271R-1PCT-0603"
+      },
+      "old_fields": {
+        "Datasheet": "~"
+      },
+      "reasons": [
+        "Single approved match for 271R -> RES-271R-1PCT-0603 (0603, 0.1W)"
+      ],
+      "warnings": [],
+      "errors": [],
+      "source_library": null,
+      "applied": true
+    },
+    {
+      "ref": "R3",
+      "status": "AUTO",
+      "confidence": 0.95,
+      "component_value": "1k",
+      "component_category": "resistor",
+      "selected_internal_pn": "RES-1K-1PCT-0805-0P25W",
+      "selected_mpn": "TBD",
+      "selected_footprint": "Resistor_SMD:R_0805_2012Metric",
+      "fields_to_write": {
+        "Footprint": "Resistor_SMD:R_0805_2012Metric",
+        "InternalPN": "RES-1K-1PCT-0805-0P25W",
+        "MPN": "TBD",
+        "Manufacturer": "Vishay",
+        "Package": "0805",
+        "PowerRating": "0.25W",
+        "Tolerance": "1%",
+        "FootFindrStatus": "AUTO",
+        "FootFindrConfidence": "0.95",
+        "FootFindrReason": "Approved 1k resistor: RES-1K-1PCT-0805-0P25W"
+      },
+      "old_fields": {
+        "Datasheet": "~",
+        "Footprint": "Resistor_SMD:R_0603_1608Metric"
+      },
+      "reasons": [
+        "Single approved match for 1k -> RES-1K-1PCT-0805-0P25W (0805, 0.25W)"
+      ],
+      "warnings": [],
+      "errors": [],
+      "source_library": null,
+      "applied": true
+    },
+    {
+      "ref": "U1",
+      "status": "AUTO",
+      "confidence": 0.99,
+      "component_value": "LMH6702MA/NOPB",
+      "component_category": "ic",
+      "selected_internal_pn": "IC-LMH6702MA-SOIC8",
+      "selected_mpn": "LMH6702MA/NOPB",
+      "selected_footprint": "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
+      "fields_to_write": {
+        "Footprint": "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
+        "InternalPN": "IC-LMH6702MA-SOIC8",
+        "MPN": "LMH6702MA/NOPB",
+        "Manufacturer": "Texas Instruments",
+        "Package": "SOIC-8",
+        "FootFindrStatus": "AUTO",
+        "FootFindrConfidence": "0.99",
+        "FootFindrReason": "Exact MPN match: IC-LMH6702MA-SOIC8"
+      },
+      "old_fields": {
+        "Datasheet": "~",
+        "MPN": "LMH6702MA/NOPB"
+      },
+      "reasons": [
+        "Exact MPN match -> IC-LMH6702MA-SOIC8"
+      ],
+      "warnings": [],
+      "errors": [],
+      "source_library": null,
+      "applied": true
+    }
+  ]
+}

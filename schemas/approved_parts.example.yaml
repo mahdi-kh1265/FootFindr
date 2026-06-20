@@ -1,0 +1,222 @@
+# FootFindr POSM approved parts seed database.
+# These are internal approved parts for schematic resolution.
+# MPNs marked "TBD" mean the specific vendor part has not been selected yet.
+# The resolver can still match by internal_pn, value, package, and footprint.
+
+parts:
+  # ── Capacitors ──────────────────────────────────────────────────────────
+
+  - internal_pn: CAP-100P-50V-C0G-0603
+    category: capacitor
+    value: 100pF
+    capacitance: 100pF
+    voltage_rating: 50V
+    dielectric: C0G
+    tolerance: 5%
+    package: "0603"
+    footprint: Capacitor_SMD:C_0603_1608Metric
+    manufacturer: TBD
+    mpn: TBD
+    approved: true
+    notes: Precision low-value cap for RF/analog.
+
+  - internal_pn: CAP-1N-50V-C0G-0603
+    category: capacitor
+    value: 1nF
+    capacitance: 1nF
+    voltage_rating: 50V
+    dielectric: C0G
+    tolerance: 5%
+    package: "0603"
+    footprint: Capacitor_SMD:C_0603_1608Metric
+    manufacturer: TBD
+    mpn: TBD
+    approved: true
+    notes: Precision 1nF for timing/filtering.
+
+  - internal_pn: CAP-10N-50V-X7R-0603
+    category: capacitor
+    value: 10nF
+    capacitance: 10nF
+    voltage_rating: 50V
+    dielectric: X7R
+    tolerance: 10%
+    package: "0603"
+    footprint: Capacitor_SMD:C_0603_1608Metric
+    manufacturer: TBD
+    mpn: TBD
+    approved: true
+    notes: General purpose 10nF.
+
+  - internal_pn: CAP-100N-16V-X7R-0603
+    category: capacitor
+    value: 100nF
+    capacitance: 100nF
+    voltage_rating: 16V
+    dielectric: X7R
+    tolerance: 10%
+    package: "0603"
+    footprint: Capacitor_SMD:C_0603_1608Metric
+    manufacturer: Murata
+    mpn: TBD
+    approved: true
+    notes: Standard local decoupling cap.
+
+  - internal_pn: CAP-1U-16V-X7R-0603
+    category: capacitor
+    value: 1uF
+    capacitance: 1uF
+    voltage_rating: 16V
+    dielectric: X7R
+    tolerance: 10%
+    package: "0603"
+    footprint: Capacitor_SMD:C_0603_1608Metric
+    manufacturer: Murata
+    mpn: TBD
+    approved: true
+    notes: Standard 1uF decoupling cap.
+
+  - internal_pn: CAP-4U7-16V-X7R-0805
+    category: capacitor
+    value: 4.7uF
+    capacitance: 4.7uF
+    voltage_rating: 16V
+    dielectric: X7R
+    tolerance: 10%
+    package: "0805"
+    footprint: Capacitor_SMD:C_0805_2012Metric
+    manufacturer: TBD
+    mpn: TBD
+    approved: true
+    notes: Mid-range decoupling cap.
+
+  - internal_pn: CAP-10U-16V-X7R-0805
+    category: capacitor
+    value: 10uF
+    capacitance: 10uF
+    voltage_rating: 16V
+    dielectric: X7R
+    tolerance: 10%
+    package: "0805"
+    footprint: Capacitor_SMD:C_0805_2012Metric
+    manufacturer: Samsung
+    mpn: TBD
+    approved: true
+    notes: Default 10uF cap for 5V rails.
+
+  - internal_pn: CAP-22U-25V-X7R-1206
+    category: capacitor
+    value: 22uF
+    capacitance: 22uF
+    voltage_rating: 25V
+    dielectric: X7R
+    tolerance: 20%
+    package: "1206"
+    footprint: Capacitor_SMD:C_1206_3216Metric
+    manufacturer: TDK
+    mpn: TBD
+    approved: true
+    notes: Bulk cap candidate.
+
+  # ── Resistors ───────────────────────────────────────────────────────────
+
+  - internal_pn: RES-0R-0603
+    category: resistor
+    value: 0R
+    resistance: 0ohm
+    tolerance: 0%
+    power_rating: 0.1W
+    package: "0603"
+    footprint: Resistor_SMD:R_0603_1608Metric
+    manufacturer: TBD
+    mpn: TBD
+    approved: true
+    notes: Zero-ohm jumper.
+
+  - internal_pn: RES-271R-1PCT-0603
+    category: resistor
+    value: 271
+    resistance: 271ohm
+    tolerance: 1%
+    power_rating: 0.1W
+    package: "0603"
+    footprint: Resistor_SMD:R_0603_1608Metric
+    manufacturer: Yageo
+    mpn: TBD
+    approved: true
+
+  - internal_pn: RES-1K-1PCT-0603
+    category: resistor
+    value: 1k
+    resistance: 1k
+    tolerance: 1%
+    power_rating: 0.1W
+    package: "0603"
+    footprint: Resistor_SMD:R_0603_1608Metric
+    manufacturer: Yageo
+    mpn: TBD
+    approved: true
+    notes: Default 1k signal resistor (0603).
+
+  - internal_pn: RES-1K-1PCT-0805-0P25W
+    category: resistor
+    value: 1k
+    resistance: 1k
+    tolerance: 1%
+    power_rating: 0.25W
+    package: "0805"
+    footprint: Resistor_SMD:R_0805_2012Metric
+    manufacturer: Vishay
+    mpn: TBD
+    approved: true
+    notes: Use when rail-to-rail power exceeds 0603 derating.
+
+  - internal_pn: RES-10K-1PCT-0603
+    category: resistor
+    value: 10k
+    resistance: 10k
+    tolerance: 1%
+    power_rating: 0.1W
+    package: "0603"
+    footprint: Resistor_SMD:R_0603_1608Metric
+    manufacturer: Yageo
+    mpn: TBD
+    approved: true
+    notes: Default signal pull-up/down resistor.
+
+  - internal_pn: RES-100K-1PCT-0603
+    category: resistor
+    value: 100k
+    resistance: 100k
+    tolerance: 1%
+    power_rating: 0.1W
+    package: "0603"
+    footprint: Resistor_SMD:R_0603_1608Metric
+    manufacturer: Yageo
+    mpn: TBD
+    approved: true
+    notes: High-value signal resistor.
+
+  - internal_pn: RSENSE-0R1-1PCT-1206-0P5W
+    category: resistor
+    value: 0.1R
+    resistance: 0.1ohm
+    tolerance: 1%
+    power_rating: 0.5W
+    package: "1206"
+    footprint: Resistor_SMD:R_1206_3216Metric
+    manufacturer: Vishay
+    mpn: TBD
+    approved: true
+    notes: Current sense resistor; use only with explicit current/power.
+
+  # ── ICs ─────────────────────────────────────────────────────────────────
+
+  - internal_pn: IC-LMH6702MA-SOIC8
+    category: ic
+    manufacturer: Texas Instruments
+    mpn: LMH6702MA/NOPB
+    package: SOIC-8
+    footprint: Package_SO:SOIC-8_3.9x4.9mm_P1.27mm
+    approved: true
+    notes: Exact IC example.

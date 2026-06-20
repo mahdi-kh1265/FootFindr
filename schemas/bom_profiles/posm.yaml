@@ -1,0 +1,51 @@
+# FootFindr POSM Internal BOM Profile
+# Groups by InternalPN when present, else by Value+Footprint+MPN.
+
+description: "POSM internal BOM - full part details with InternalPN grouping"
+group_by: internal_pn
+exclude_dnp: true
+warn_missing:
+  - Footprint
+  - InternalPN
+  - MPN
+
+columns:
+  - name: Quantity
+    source: quantity
+    default: ""
+  - name: References
+    source: references
+    default: ""
+  - name: Value
+    source: value
+    default: ""
+  - name: InternalPN
+    source: internal_pn
+    default: ""
+  - name: MPN
+    source: mpn
+    default: ""
+  - name: Manufacturer
+    source: manufacturer
+    default: ""
+  - name: Footprint
+    source: footprint
+    default: ""
+  - name: Package
+    source: package
+    default: ""
+  - name: VoltageRating
+    source: voltage_rating
+    default: ""
+  - name: PowerRating
+    source: power_rating
+    default: ""
+  - name: Tolerance
+    source: tolerance
+    default: ""
+  - name: Dielectric
+    source: dielectric
+    default: ""
+  - name: Notes
+    source: notes
+    default: ""

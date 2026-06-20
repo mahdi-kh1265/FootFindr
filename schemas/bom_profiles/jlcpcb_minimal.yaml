@@ -1,0 +1,19 @@
+# JLCPCB Minimal BOM Profile - Variant A (official minimum fields)
+# Minimum fields required by JLCPCB's BOM upload.
+
+description: "JLCPCB minimal BOM - Comment, Designator, Footprint only"
+group_by: value_footprint
+exclude_dnp: true
+warn_missing:
+  - Footprint
+
+columns:
+  - name: Comment
+    source: comment
+    default: ""
+  - name: Designator
+    source: designator
+    default: ""
+  - name: Footprint
+    source: package
+    default: ""

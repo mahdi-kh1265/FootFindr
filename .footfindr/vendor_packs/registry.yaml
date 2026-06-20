@@ -1,0 +1,12 @@
+Murata-GRM-MLCC-Library:
+  pack_name: footfindr-lib-murata-grm
+  pack_dir: C:\Users\mahdi\Downloads\footfindr_handoff\footfindr_handoff\.footfindr\vendor_packs\footfindr-lib-murata-grm
+  vendor: Murata
+  series: GRM
+  category: capacitor
+  version: 1.0.0
+  installed_at: '2026-06-19T19:50:55.276370+00:00'
+  source_type: manual_csv
+  real_source: true
+  is_complete_catalog: true
+  part_count: 9223

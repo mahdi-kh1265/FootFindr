@@ -1,0 +1,13 @@
+name: digikey_cart
+kind: cart
+format: csv
+supplier: digikey
+columns:
+  - name: DigiKey Part Number
+    source: DKPN
+  - name: Quantity
+    source: need_to_buy
+  - name: Customer Reference
+    source: references
+  - name: InternalPN
+    source: InternalPN

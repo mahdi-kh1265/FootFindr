@@ -1,0 +1,7 @@
+version: 1
+refs:
+  C1:
+    capacitance: 4.7uF
+    voltage: '>=25V'
+    dielectric: X7R
+    package: '0603'

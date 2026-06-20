@@ -1,0 +1,72 @@
+# ================================================
+# FootFindr — .gitignore
+# ================================================
+
+# ----- API Keys, Auth, Secrets -----
+.footfindr/.env
+.footfindr/auth/
+*.pem
+*.key
+*.p12
+*.pfx
+.env
+.env.*
+!.env.example
+
+# ----- FootFindr workspace (user-local data) -----
+.footfindr/supplier_cache/
+.footfindr/session/
+.footfindr/index/
+.footfindr/plans/
+.footfindr/projects/
+.footfindr/raw/
+.footfindr/state.yaml
+
+# ----- Python -----
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.whl
+
+# ----- Virtual environments -----
+.venv/
+venv/
+ENV/
+
+# ----- Databases -----
+*.sqlite
+*.sqlite3
+*.db
+
+# ----- Testing -----
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ----- Linting / Formatting -----
+.ruff_cache/
+.mypy_cache/
+
+# ----- IDE / Editor -----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ----- Temp / Debug -----
+tmp/
+exports/
+
+# ----- OS -----
+Desktop.ini
+ehthumbs.db

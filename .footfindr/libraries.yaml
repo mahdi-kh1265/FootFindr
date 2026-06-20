@@ -1,0 +1,13 @@
+libraries:
+- name: Murata-GRM-MLCC-Library
+  kind: raw_vendor
+  active: false
+  parts_file: C:\Users\mahdi\Downloads\footfindr_handoff\footfindr_handoff\.footfindr\raw\murata-grm-mlcc-library.yaml
+  created: '2026-06-19T19:44:21.795123+00:00'
+  modified: '2026-06-19T19:44:21.795123+00:00'
+- name: POSM
+  kind: approved
+  active: false
+  parts_file: C:\Users\mahdi\Downloads\footfindr_handoff\footfindr_handoff\.footfindr\approved\posm.yaml
+  created: '2026-06-19T19:45:38.936289+00:00'
+  modified: '2026-06-19T19:45:38.936289+00:00'

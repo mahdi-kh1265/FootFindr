@@ -1,0 +1,33 @@
+pack_name: footfindr-lib-murata-grm
+display_name: Murata GRM MLCC Library
+vendor: Murata
+series: GRM
+category: capacitor
+kind: raw_vendor
+version: 1.0.0
+generated_at: '2026-06-19T19:48:59.716433+00:00'
+footfindr_min_version: 0.1.0
+source:
+  source_type: manual_csv
+  real_source: true
+  is_complete_catalog: true
+  source_file: murata-grm.csv
+  source_sha256: 1f798c706471cc598803f5195566a3a36a0ed44c063bf7c8aedc2320deef013e
+  source_url: null
+  downloaded_at: '2026-06-19T19:48:59.716433+00:00'
+  notes: null
+counts:
+  raw_rows: 9223
+  imported_parts: 9223
+  skipped_rows: 0
+parser:
+  name: MurataGRMParser
+  slug: murata-grm
+  version: 1.0.0
+hashes:
+  source_csv: 1f798c706471cc598803f5195566a3a36a0ed44c063bf7c8aedc2320deef013e
+  normalized_yaml: 1b73e6e5c7ec9127ce269357904a096ce6c7b08bd157dd865cd1ce8af3ad2ef2
+  normalized_jsonl: 739406bd61ca4979ac10177ca74c33c0c8910e388e0335692000c34dac97698e
+license:
+  redistribution_status: unknown
+  notes: Verify vendor licensing before redistribution.

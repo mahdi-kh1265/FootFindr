@@ -1,0 +1,47 @@
+parts:
+- internal_pn: CAP-10U-16V-X7R-0805
+  category: capacitor
+  value: 10uF
+  manufacturer: Murata
+  mpn: GRM21BB31C106KE15
+  description: Murata GRM MLCC 10uF 16V B
+  capacitance: 10uF
+  voltage_rating: 16V
+  tolerance: 10%
+  dielectric: B
+  package: 0805
+  footprint: Capacitor_SMD:C_0805_2012Metric
+  approved: true
+  status: approved
+  library: POSM
+  source_vendor: Murata
+  source_series: GRM
+  source_pack: footfindr-lib-murata-grm
+  source_file: murata-grm.csv
+  source_row: 8333
+  promoted_at: '2026-06-19T19:45:55.115235+00:00'
+  promoted_from: Murata-GRM-MLCC-Library
+  notes: Promoted from Murata-GRM-MLCC-Library on 2026-06-19
+- internal_pn: CAP-10U-16V-B-0805-MURATA
+  category: capacitor
+  value: 10uF
+  manufacturer: Murata
+  mpn: GRM21BB31C106KE15
+  description: Murata GRM MLCC 10uF 16V B
+  capacitance: 10uF
+  voltage_rating: 16V
+  tolerance: 10%
+  dielectric: B
+  package: 0805
+  footprint: Capacitor_SMD:C_0805_2012Metric
+  approved: true
+  status: approved
+  library: POSM
+  source_vendor: Murata
+  source_series: GRM
+  source_pack: footfindr-lib-murata-grm
+  source_file: murata-grm.csv
+  source_row: 8333
+  promoted_at: '2026-06-19T19:54:50.775133+00:00'
+  promoted_from: Murata-GRM-MLCC-Library
+  notes: Promoted from Murata-GRM-MLCC-Library on 2026-06-19

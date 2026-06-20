@@ -1,0 +1,141 @@
+# Example FootFindr project/user configuration.
+# Copy to footfindr.yaml and edit for local use.
+
+version: 0.1
+
+project:
+  name: example-project
+  schematic: example_board.kicad_sch
+  data_dir: footfindr_data
+  parts_db: footfindr.sqlite
+
+resolve:
+  auto_apply_min_confidence: 0.92
+  backup_on_apply: true
+  respect_locks: true
+  overwrite_existing_footprints: false
+  write_fields:
+    - Footprint
+    - InternalPN
+    - MPN
+    - Manufacturer
+    - Package
+    - VoltageRating
+    - PowerRating
+    - DKPN
+    - MouserPN
+    - LCSC Part #
+    - FootFindrStatus
+    - FootFindrConfidence
+    - FootFindrReason
+
+fields:
+  canonical:
+    internal_pn: InternalPN
+    mpn: MPN
+    manufacturer: Manufacturer
+    digikey: DKPN
+    mouser: MouserPN
+    lcsc: LCSC Part #
+    package: Package
+    footprint_locked: FootFindrLocked
+    dnp: DNP
+  aliases:
+    mpn:
+      - Mfr Part Number
+      - Manufacturer Part Number
+    manufacturer:
+      - Mfr
+    digikey:
+      - DigiKeyPN
+      - Digi-Key Part Number
+    lcsc:
+      - JLCPCB Part #
+
+rails:
+  "+1V2": { voltage: 1.2 }
+  "+1V8": { voltage: 1.8 }
+  "+3V3": { voltage: 3.3 }
+  "+5V":  { voltage: 5.0 }
+  "+12V": { voltage: 12.0 }
+  "V_EOM":
+    voltage: 300
+    force_manual_review: true
+  "HV":
+    voltage: 300
+    force_manual_review: true
+
+risk:
+  high_risk_net_patterns:
+    - HV
+    - EOM
+    - RF
+    - CLK
+    - GATE
+    - SW
+    - RESET
+    - VPI
+    - PIEZO
+    - LASER
+    - BIAS
+
+capacitors:
+  voltage_derating: 2.0
+  preferred_dielectrics: [X7R, X5R]
+  stock_min: 100
+  package_policy:
+    - condition: "capacitance <= 100nF and rail_voltage <= 5V"
+      prefer: [0603, 0402]
+    - condition: "capacitance >= 1uF and rail_voltage <= 3.3V"
+      prefer: [0603, 0805]
+    - condition: "capacitance >= 10uF and rail_voltage >= 5V"
+      prefer: [0805, 1206]
+  effective_capacitance:
+    enabled: false
+    if_no_dc_bias_data: warn
+
+resistors:
+  default_signal_package: "0603"
+  default_tolerance: "1%"
+  power_derating: 0.5
+  voltage_derating: 0.5
+  stock_min: 100
+
+package_footprints:
+  capacitor:
+    "0402": "Capacitor_SMD:C_0402_1005Metric"
+    "0603": "Capacitor_SMD:C_0603_1608Metric"
+    "0805": "Capacitor_SMD:C_0805_2012Metric"
+    "1206": "Capacitor_SMD:C_1206_3216Metric"
+  resistor:
+    "0402": "Resistor_SMD:R_0402_1005Metric"
+    "0603": "Resistor_SMD:R_0603_1608Metric"
+    "0805": "Resistor_SMD:R_0805_2012Metric"
+    "1206": "Resistor_SMD:R_1206_3216Metric"
+
+footprints:
+  libs:
+    - ./footprints/POSM.pretty
+    - ${KICAD_USER_FOOTPRINT_DIR}
+
+suppliers:
+  digikey:
+    enabled: false
+    client_id_env: DIGIKEY_CLIENT_ID
+    client_secret_env: DIGIKEY_CLIENT_SECRET
+  mouser:
+    enabled: false
+    search_key_env: MOUSER_SEARCH_API_KEY
+    cart_key_env: MOUSER_CART_API_KEY
+  nexar:
+    enabled: false
+    client_id_env: NEXAR_CLIENT_ID
+    client_secret_env: NEXAR_CLIENT_SECRET
+
+bom:
+  default_profile: posm
+
+ai:
+  enabled: false
+  provider: none
+  require_human_approval_for_profiles: true
