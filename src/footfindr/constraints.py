@@ -299,6 +299,14 @@ class ConstraintResult:
     actual_value: str
     message: str
     is_soft: bool = False  # True for prefer_/avoid_ constraints
+    source: str | None = None  # Where the value came from, e.g. "attributes.Capacitance"
+
+
+@dataclass
+class FieldValue:
+    """Resolved field value from a SupplierPart."""
+    value: str | None
+    source: str | None  # e.g. "top.package", "attributes.Capacitance"
 
 
 # ---------------------------------------------------------------------------
@@ -453,7 +461,7 @@ def _dielectric_matches(constraint_val: str, part_val: str) -> bool:
 # Numeric equality for component value fields
 # ---------------------------------------------------------------------------
 
-_NUMERIC_EQ_FIELDS = {"capacitance", "resistance", "voltage", "current", "value"}
+_NUMERIC_EQ_FIELDS = {"capacitance", "resistance", "voltage", "current", "value", "frequency", "temperature"}
 
 
 def _numeric_values_equal(constraint_val: str, part_val: str, domain: str = "") -> bool:
@@ -633,72 +641,97 @@ def check_constraint(constraint: Constraint, part_value: str) -> ConstraintResul
     )
 
 
-def _get_part_field(part, field_name: str) -> str:
-    """Get a field value from a SupplierPart for constraint checking."""
-    # Direct attribute
+# ---------------------------------------------------------------------------
+# Centralized supplier attribute aliases
+# ---------------------------------------------------------------------------
+
+# Maps canonical constraint field names to ordered lists of supplier attribute
+# keys to check.  The first non-empty match wins.
+_SUPPLIER_ATTRIBUTE_ALIASES: dict[str, list[str]] = {
+    "capacitance": ["Capacitance"],
+    "voltage": ["Voltage - Rated", "Voltage Rating", "Rated Voltage", "Voltage"],
+    "dielectric": ["Temperature Coefficient", "Dielectric", "Dielectric Material"],
+    "package": ["Package / Case", "Supplier Device Package", "Package", "Case"],
+    "temperature": ["Operating Temperature", "Temperature Range"],
+    "tolerance": ["Tolerance"],
+    "resistance": ["Resistance"],
+    "current": ["Current Rating", "Current - Output", "Output Current"],
+    "frequency": ["Frequency"],
+    "value": ["Capacitance", "Resistance", "Inductance"],
+}
+
+# Top-level SupplierPart fields to check before falling through to attributes.
+_TOP_LEVEL_FIELDS: set[str] = {
+    "mpn", "manufacturer", "supplier", "supplier_pn", "description",
+    "package", "mounting_type", "temperature_range",
+    "supplier_device_package", "packaging", "product_status",
+    "lifecycle", "stock", "datasheet_url", "product_url",
+}
+
+
+def get_part_field(part, field_name: str) -> FieldValue:
+    """Unified field resolver for constraint checking.
+
+    Resolution order:
+    1. Top-level SupplierPart attribute (if field_name matches directly)
+    2. Supplier attribute aliases (ordered list per canonical field)
+    3. Raw attributes dict lookup by field_name
+
+    Returns FieldValue(value, source) where source describes provenance.
+    """
+    attrs = getattr(part, "attributes", {}) or {}
+
+    # --- Special overrides for fields that need composite logic ---
+    if field_name == "package":
+        for attr_name in ("package", "supplier_device_package"):
+            val = getattr(part, attr_name, None)
+            if val and str(val).strip():
+                return FieldValue(str(val), f"top.{attr_name}")
+        for alias in _SUPPLIER_ATTRIBUTE_ALIASES.get("package", []):
+            if alias in attrs and attrs[alias] and str(attrs[alias]).strip():
+                return FieldValue(str(attrs[alias]), f"attributes.{alias}")
+        return FieldValue(None, None)
+
+    if field_name in ("prefer_package", "avoid_package"):
+        # Reuse package resolution
+        return get_part_field(part, "package")
+
+    if field_name == "family":
+        mpn = getattr(part, "mpn", None)
+        return FieldValue(str(mpn) if mpn else None, "top.mpn")
+
+    if field_name == "suppliers":
+        sup = getattr(part, "supplier", None)
+        return FieldValue(str(sup) if sup else None, "top.supplier")
+
+    if field_name == "output_current":
+        for alias in ["Output Current", "Current - Output"]:
+            if alias in attrs and attrs[alias] and str(attrs[alias]).strip():
+                return FieldValue(str(attrs[alias]), f"attributes.{alias}")
+        return FieldValue(None, None)
+
+    # --- 1. Top-level field check (only for known top-level names) ---
+    if field_name in _TOP_LEVEL_FIELDS:
+        val = getattr(part, field_name, None)
+        if val is not None and str(val).strip():
+            return FieldValue(str(val), f"top.{field_name}")
+
+    # --- 2. Supplier attribute aliases ---
+    aliases = _SUPPLIER_ATTRIBUTE_ALIASES.get(field_name, [])
+    for alias in aliases:
+        if alias in attrs and attrs[alias] and str(attrs[alias]).strip():
+            return FieldValue(str(attrs[alias]), f"attributes.{alias}")
+
+    # --- 3. Direct top-level attr (catch fields not in _TOP_LEVEL_FIELDS) ---
     val = getattr(part, field_name, None)
-    if val is not None and val != "":
-        return str(val)
+    if val is not None and str(val).strip():
+        return FieldValue(str(val), f"top.{field_name}")
 
-    # Mapped fields
-    field_map = {
-        "voltage": lambda p: (
-            getattr(p, "attributes", {}).get("Voltage - Rated", "")
-            or getattr(p, "attributes", {}).get("Voltage Rating", "")
-            or getattr(p, "attributes", {}).get("Voltage - Supply", "")
-        ),
-        "dielectric": lambda p: (
-            getattr(p, "attributes", {}).get("Dielectric", "")
-            or getattr(p, "attributes", {}).get("Temperature Coefficient", "")
-        ),
-        "value": lambda p: (
-            getattr(p, "attributes", {}).get("Capacitance", "")
-            or getattr(p, "attributes", {}).get("Resistance", "")
-            or getattr(p, "attributes", {}).get("Inductance", "")
-            or getattr(p, "description", "")
-        ),
-        "package": lambda p: (
-            getattr(p, "package", "")
-            or getattr(p, "supplier_device_package", "")
-            or getattr(p, "attributes", {}).get("Package / Case", "")
-        ),
-        "tolerance": lambda p: (
-            getattr(p, "attributes", {}).get("Tolerance", "")
-        ),
-        "family": lambda p: getattr(p, "mpn", ""),
-        "suppliers": lambda p: getattr(p, "supplier", ""),
-        "prefer_package": lambda p: (
-            getattr(p, "package", "")
-            or getattr(p, "supplier_device_package", "")
-        ),
-        "avoid_package": lambda p: (
-            getattr(p, "package", "")
-            or getattr(p, "supplier_device_package", "")
-        ),
-        "temperature": lambda p: (
-            getattr(p, "temperature_range", "")
-            or getattr(p, "attributes", {}).get("Operating Temperature", "")
-        ),
-        "temp": lambda p: (
-            getattr(p, "temperature_range", "")
-            or getattr(p, "attributes", {}).get("Operating Temperature", "")
-        ),
-        "output_current": lambda p: (
-            getattr(p, "attributes", {}).get("Output Current", "")
-            or getattr(p, "attributes", {}).get("Current - Output", "")
-        ),
-    }
+    # --- 4. Raw attributes dict lookup by field_name ---
+    if field_name in attrs and attrs[field_name] and str(attrs[field_name]).strip():
+        return FieldValue(str(attrs[field_name]), f"attributes.{field_name}")
 
-    getter = field_map.get(field_name)
-    if getter:
-        return getter(part) or ""
-
-    # Check attributes dict
-    attrs = getattr(part, "attributes", {})
-    if field_name in attrs:
-        return attrs[field_name] or ""
-
-    return ""
+    return FieldValue(None, None)
 
 
 def check_part_constraints(
@@ -711,8 +744,10 @@ def check_part_constraints(
     """
     results = []
     for c in constraints:
-        pv = _get_part_field(part, c.field)
+        fv = get_part_field(part, c.field)
+        pv = fv.value or ""
         result = check_constraint(c, pv)
+        result.source = fv.source
         results.append(result)
     return results
 
@@ -789,6 +824,38 @@ def infer_category(ref: str | None = None, description: str | None = None) -> tu
             return ComponentCategory.IC.value, "medium"
 
     return ComponentCategory.OTHER.value, "review"
+
+
+# ---------------------------------------------------------------------------
+# Schematic value canonicalization for query building
+# ---------------------------------------------------------------------------
+
+def _canonicalize_schematic_value(raw: str, ref: str | None = None) -> str:
+    """Canonicalize a raw schematic value for use in search queries.
+
+    Converts shorthand notation to standard form based on component category:
+        4.7u (C1)  -> 4.7uF
+        10n  (C2)  -> 10nF
+        4u7  (C3)  -> 4.7uF
+        10k  (R1)  -> 10k  (left as-is for resistors)
+
+    Falls back to the raw value if parsing fails.
+    """
+    cat, _ = infer_category(ref)
+
+    if cat == "capacitor":
+        from footfindr.core.units import parse_capacitance, normalize_capacitance_display
+        parsed = parse_capacitance(raw)
+        if parsed is not None:
+            return normalize_capacitance_display(parsed)
+
+    if cat == "resistor":
+        from footfindr.core.units import parse_resistance, normalize_resistance_display
+        parsed = parse_resistance(raw)
+        if parsed is not None:
+            return normalize_resistance_display(parsed)
+
+    return raw
 
 
 # ---------------------------------------------------------------------------
@@ -993,9 +1060,9 @@ class ConstraintManager:
                 return  # exact string duplicate
             parts.append(val)
 
-        # 1. Include schematic value field if available
+        # 1. Include schematic value field if available (canonicalized)
         if schematic_value and schematic_value.strip():
-            sv = schematic_value.strip()
+            sv = _canonicalize_schematic_value(schematic_value.strip(), ref)
             _add_if_not_numeric_dup(sv, "value")
 
         # 2. Include constraint values in priority order

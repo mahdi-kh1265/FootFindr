@@ -111,6 +111,8 @@ class MockSupplierProvider(SupplierProvider):
         query: str,
         *,
         category: str | None = None,
+        limit: int = 25,
+        offset: int = 0,
         **filters: Any,
     ) -> list[SupplierPart]:
         q = query.upper()
@@ -118,7 +120,7 @@ class MockSupplierProvider(SupplierProvider):
         for mpn, part in _MOCK_PARTS.items():
             if q in mpn or q in (part.description or "").upper():
                 results.append(part)
-        return results
+        return results[offset:offset + limit]
 
     def refresh_stock(
         self,

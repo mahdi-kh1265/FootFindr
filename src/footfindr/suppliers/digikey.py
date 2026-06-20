@@ -288,9 +288,16 @@ class DigiKeyProvider(SupplierProvider):
         query: str,
         *,
         category: str | None = None,
+        limit: int = 25,
+        offset: int = 0,
         **filters: Any,
-    ) -> list[SupplierPart]:
-        """Search parts using DigiKey keyword search."""
+    ) -> "SupplierSearchPage":
+        """Search parts using DigiKey keyword search.
+
+        Returns a SupplierSearchPage with pagination metadata.
+        """
+        from footfindr.suppliers.base import SupplierSearchPage
+
         client = self._get_client()
 
         def _on_401():
@@ -298,8 +305,8 @@ class DigiKeyProvider(SupplierProvider):
 
         payload = {
             "Keywords": query,
-            "RecordCount": 25,
-            "RecordStartPosition": 0,
+            "RecordCount": min(limit, 50),
+            "RecordStartPosition": offset,
             "ExcludeMarketPlaceProducts": True,
         }
 
@@ -316,11 +323,38 @@ class DigiKeyProvider(SupplierProvider):
                 self._handle_403(e)
                 # Retry with 3-legged token
                 self._client = None
-                return self.search(query, category=category, **filters)
+                return self.search(query, category=category, limit=limit, offset=offset, **filters)
             raise
 
         data = resp.json()
-        return self._parse_search_results(data)
+        items = self._parse_search_results(data)
+
+        # Extract pagination metadata from DigiKey response
+        total_available = (
+            data.get("ProductsCount")
+            or data.get("ResultCount")
+            or data.get("ExactManufacturerProductsCount")
+        )
+        if isinstance(total_available, str):
+            try:
+                total_available = int(total_available)
+            except ValueError:
+                total_available = None
+
+        # Determine has_more
+        has_more = len(items) == min(limit, 50)
+        if total_available is not None:
+            has_more = (offset + len(items)) < total_available
+
+        return SupplierSearchPage(
+            items=items,
+            supplier="digikey",
+            query=query,
+            limit=limit,
+            offset=offset,
+            total_available=total_available,
+            has_more=has_more,
+        )
 
     def refresh_stock(
         self,

@@ -270,10 +270,12 @@ def check_collisions(
     supplier_pn: str | None,
     target_library: str,
     manager,
+    manufacturer: str | None = None,
 ) -> list[CollisionWarning]:
     """Check for collisions before promotion.
 
-    Returns a list of collision warnings.
+    Returns a list of collision warnings. Idempotent reuse (same IPN+MPN)
+    is reported as collision_type="idempotent" — NOT a blocking conflict.
     """
     warnings: list[CollisionWarning] = []
 
@@ -283,50 +285,98 @@ def check_collisions(
         existing_parts = []
 
     for p in existing_parts:
-        # Same internal PN
-        if p.internal_pn == internal_pn:
+        existing_mpn = p.mpn or ""
+        existing_mfr = getattr(p, "manufacturer", "") or ""
+
+        # --- Idempotent reuse: same IPN AND same MPN ---
+        if p.internal_pn == internal_pn and existing_mpn == mpn:
+            warnings.append(CollisionWarning(
+                collision_type="idempotent",
+                existing_pn=p.internal_pn,
+                existing_mpn=existing_mpn,
+                message=f"Part already exists in library (IPN={internal_pn}, MPN={mpn}). Reusing.",
+            ))
+            continue  # Don't generate other warnings for this part
+
+        # --- True collision: same IPN but different MPN ---
+        if p.internal_pn == internal_pn and existing_mpn != mpn:
             warnings.append(CollisionWarning(
                 collision_type="same_internal_pn",
                 existing_pn=p.internal_pn,
-                existing_mpn=p.mpn or "",
-                message=f"Internal PN '{internal_pn}' already exists",
+                existing_mpn=existing_mpn,
+                message=(
+                    f"Internal PN '{internal_pn}' already exists with "
+                    f"MPN '{existing_mpn}' (requested MPN: '{mpn}')"
+                ),
             ))
 
-        # Same MPN
-        if p.mpn and p.mpn == mpn:
-            warnings.append(CollisionWarning(
-                collision_type="same_mpn",
-                existing_pn=p.internal_pn,
-                existing_mpn=p.mpn,
-                message=f"MPN '{mpn}' already approved as '{p.internal_pn}'",
-            ))
+        # --- True collision: same MPN but different IPN ---
+        if existing_mpn and existing_mpn == mpn and p.internal_pn != internal_pn:
+            # Check if manufacturer conflicts
+            mfr_conflict = (
+                manufacturer and existing_mfr
+                and manufacturer.strip().lower() != existing_mfr.strip().lower()
+            )
+            if mfr_conflict:
+                warnings.append(CollisionWarning(
+                    collision_type="same_mpn_conflict",
+                    existing_pn=p.internal_pn,
+                    existing_mpn=existing_mpn,
+                    message=(
+                        f"MPN '{mpn}' already approved as '{p.internal_pn}' "
+                        f"(manufacturer: '{existing_mfr}' vs '{manufacturer}')"
+                    ),
+                ))
+            else:
+                warnings.append(CollisionWarning(
+                    collision_type="same_mpn",
+                    existing_pn=p.internal_pn,
+                    existing_mpn=existing_mpn,
+                    message=f"MPN '{mpn}' already approved as '{p.internal_pn}'",
+                ))
 
         # Same supplier PN
         if supplier_pn:
             for sup, spn in (p.supplier_pns or {}).items():
-                if spn == supplier_pn:
+                if spn == supplier_pn and p.internal_pn != internal_pn:
                     warnings.append(CollisionWarning(
                         collision_type="same_supplier_pn",
                         existing_pn=p.internal_pn,
-                        existing_mpn=p.mpn or "",
+                        existing_mpn=existing_mpn,
                         message=f"Supplier PN '{supplier_pn}' already linked to '{p.internal_pn}'",
                     ))
 
         # Similar family (shared MPN prefix ≥ 5 chars)
-        if p.mpn and mpn and len(mpn) >= 5:
-            prefix_len = min(len(mpn), len(p.mpn))
+        if existing_mpn and mpn and len(mpn) >= 5:
+            prefix_len = min(len(mpn), len(existing_mpn))
             common = 0
             for i in range(prefix_len):
-                if mpn[i].upper() == p.mpn[i].upper():
+                if mpn[i].upper() == existing_mpn[i].upper():
                     common += 1
                 else:
                     break
-            if common >= 5 and p.mpn != mpn:
+            if common >= 5 and existing_mpn != mpn:
                 warnings.append(CollisionWarning(
                     collision_type="similar_family",
                     existing_pn=p.internal_pn,
-                    existing_mpn=p.mpn,
-                    message=f"Similar MPN family: existing '{p.mpn}' ({p.internal_pn})",
+                    existing_mpn=existing_mpn,
+                    message=f"Similar MPN family: existing '{existing_mpn}' ({p.internal_pn})",
                 ))
 
     return warnings
+
+
+def is_idempotent_reuse(collisions: list[CollisionWarning]) -> bool:
+    """Check if all collisions are idempotent reuse (not real conflicts).
+
+    Returns True if the only collision warnings are idempotent (same IPN+MPN).
+    """
+    if not collisions:
+        return False
+    return all(c.collision_type == "idempotent" for c in collisions)
+
+
+def has_true_conflicts(collisions: list[CollisionWarning]) -> bool:
+    """Check if there are any real (non-idempotent) conflicts."""
+    blocking = {"same_internal_pn", "same_mpn_conflict", "same_supplier_pn"}
+    return any(c.collision_type in blocking for c in collisions)

@@ -317,6 +317,36 @@ class ProjectReviewer:
                     severity="FAIL", code="MISSING_FOOTPRINT", ref=ref,
                     field="Footprint",
                     message=f"{ref}: missing Footprint.",
+                    suggested_action="ff fp scan && ff ref assign <ref> . <index> --as <IPN>",
+                ))
+            elif package:
+                # Footprint vs package mismatch check (M9.3)
+                if not _footprint_matches_package(footprint, package):
+                    issues.append(ProjectIssue(
+                        severity="WARN", code="FP_MISMATCH", ref=ref,
+                        field="Footprint",
+                        message=f"{ref}: Package '{package}' but Footprint is '{footprint}'.",
+                    ))
+
+            # FootFindr footprint status (M9.3)
+            fp_status = fields.get("FootFindrFootprintStatus", "")
+            if fp_status == "AMBIGUOUS":
+                issues.append(ProjectIssue(
+                    severity="WARN", code="FP_AMBIGUOUS", ref=ref,
+                    field="FootFindrFootprintStatus",
+                    message=f"{ref}: Footprint resolution was ambiguous. Use: ff fp bind {ref} <kicad_id>",
+                ))
+            elif fp_status == "MISSING":
+                issues.append(ProjectIssue(
+                    severity="WARN", code="FP_NOT_INDEXED", ref=ref,
+                    field="FootFindrFootprintStatus",
+                    message=f"{ref}: Footprint could not be resolved. Try: ff fp scan",
+                ))
+            elif fp_status == "CONFLICT":
+                issues.append(ProjectIssue(
+                    severity="HIGH", code="FP_CONFLICT", ref=ref,
+                    field="FootFindrFootprintStatus",
+                    message=f"{ref}: Existing footprint conflicts with resolved footprint.",
                 ))
 
             # --- LCSC check (profile-dependent severity) ---
@@ -396,7 +426,7 @@ class ProjectReviewer:
             # --- Constraint checks ---
             if constraint_mgr:
                 from footfindr.constraints import (
-                    Constraint, check_constraint, _get_part_field,
+                    Constraint, check_constraint, get_part_field,
                 )
                 cons = constraint_mgr.get_constraints_for(ref)
                 for c in cons:
@@ -415,7 +445,8 @@ class ProjectReviewer:
 
                     # Fall back to approved part
                     if not actual and part:
-                        actual = _get_part_field(part, c.field)
+                        fv = get_part_field(part, c.field)
+                        actual = fv.value or ""
 
                     if not actual and c.field == "package":
                         actual = package or footprint
@@ -1016,3 +1047,33 @@ def _check_lead_time(lead_time_str: str, risk_codes: list[str]) -> None:
         days = int(m.group(1))
         if days > RISK_THRESHOLDS["long_lead_time_days"]:
             risk_codes.append("LONG_LEAD_TIME")
+
+
+def _footprint_matches_package(footprint: str, package: str) -> bool:
+    """Check if a KiCad footprint contains the expected package size tokens.
+
+    Examples:
+        "Capacitor_SMD:C_0603_1608Metric" + "0603" → True
+        "Capacitor_SMD:C_0805_2012Metric" + "0603" → False
+        "Package_DFN_QFN:QFN-32-1EP_5x5mm" + "QFN-32" → True
+    """
+    if not footprint or not package:
+        return True  # Can't check, assume OK
+
+    import re
+    fp_upper = footprint.upper()
+    pkg_upper = package.upper()
+
+    # Extract the core package token (before any parenthetical metric)
+    pkg_core = re.match(r'^(\S+)', pkg_upper)
+    if pkg_core:
+        token = pkg_core.group(1).strip()
+        if token in fp_upper:
+            return True
+
+    # Direct containment
+    if pkg_upper in fp_upper:
+        return True
+
+    return False
+

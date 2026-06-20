@@ -2013,6 +2013,39 @@ def doctor() -> None:
 
 
 # ---------------------------------------------------------------------------
+# footprint / fp — KiCad footprint discovery and mapping (M9.3)
+# ---------------------------------------------------------------------------
+
+fp_app = typer.Typer(help="KiCad footprint discovery, mapping, and binding commands.")
+app.add_typer(fp_app, name="fp")
+app.add_typer(fp_app, name="footprint", hidden=True)
+
+from footfindr.cli_footprint import register_footprint_commands as _reg_fp
+_reg_fp(fp_app)
+
+
+# ---------------------------------------------------------------------------
+# datasheet stubs (M9.3 — hooks for M10)
+# ---------------------------------------------------------------------------
+
+datasheet_app = typer.Typer(help="Datasheet management (preview — M10).")
+app.add_typer(datasheet_app, name="datasheet")
+app.add_typer(datasheet_app, name="ds", hidden=True)
+
+
+@datasheet_app.command("attach")
+def datasheet_attach_cmd(
+    ref: str = typer.Argument(..., help="Schematic reference (e.g. U1)."),
+    pdf_path: str = typer.Argument(..., help="Path to datasheet PDF."),
+) -> None:
+    """Attach a datasheet to a schematic reference. (Not yet implemented.)"""
+    console.print(f"[yellow]Datasheet attach is not yet implemented (planned for M10).[/yellow]")
+    console.print(f"  ref: {ref}")
+    console.print(f"  pdf: {pdf_path}")
+    console.print(f"\nThis will store the datasheet reference for automated footprint/package extraction.")
+
+
+# ---------------------------------------------------------------------------
 # supplier commands
 # ---------------------------------------------------------------------------
 

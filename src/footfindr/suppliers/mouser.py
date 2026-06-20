@@ -127,6 +127,8 @@ class MouserProvider(SupplierProvider):
         query: str,
         *,
         category: str | None = None,
+        limit: int = 25,
+        offset: int = 0,
         **filters: Any,
     ) -> list[SupplierPart]:
         """Search parts by keyword."""
@@ -136,8 +138,8 @@ class MouserProvider(SupplierProvider):
         payload = {
             "SearchByKeywordRequest": {
                 "keyword": query,
-                "records": 25,
-                "startingRecord": 0,
+                "records": min(limit, 50),
+                "startingRecord": offset,
                 "searchOptions": "",
                 "searchWithYourSignUpLanguage": "",
             }

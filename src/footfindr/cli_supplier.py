@@ -352,6 +352,7 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
     def supplier_list_cmd(
         ref: str = typer.Argument(".", help="Active result set ref (use '.')."),
         mini: bool = typer.Option(False, "--mini", "-q", help="Compact output."),
+        show_all: bool = typer.Option(False, "--all", "-A", help="Show all fetched results (no pagination)."),
         part_numbers_only: bool = typer.Option(False, "--part-numbers-only", "-p", help="MPN list only."),
         columns_str: Optional[str] = typer.Option(None, "--columns", "--cols", help="Comma-separated column list."),
         view: Optional[str] = typer.Option(None, "--view", "-v", help="Named view (stock, package, price, sourcing, specs)."),
@@ -374,9 +375,18 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
             console.print(render_part_numbers_only(results))
             return
 
+        # If --all, show everything; otherwise respect pagination
+        if not show_all:
+            results = session.get_current_page()
+
         columns = _parse_columns(columns_str)
         _print_status(session)
-        if mini or columns or view:
+
+        total_fetched = len(session.get_active_results())
+        if show_all:
+            console.print(f"[dim]Showing all {total_fetched} fetched results[/dim]")
+
+        if mini or show_all or columns or view:
             table = render_mini_table(
                 results,
                 context_fields=session.sort_fields,
@@ -1239,28 +1249,51 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
         cache = SupplierCache()
         providers = _resolve_providers(supplier, suppliers, all_suppliers)
 
-        def _run_search(q: str) -> list:
-            """Execute search for a given query across providers."""
+        def _run_search(q: str, search_limit: int | None = None, search_offset: int = 0) -> tuple[list, dict[str, int], bool]:
+            """Execute search for a given query across providers.
+
+            Returns: (results, provider_offsets, has_more_remote)
+            """
+            from footfindr.suppliers.base import SupplierSearchPage
             results: list = []
+            provider_offsets: dict[str, int] = {}
+            has_more_remote = False
+            effective_limit = search_limit or limit
+
             for provider in providers:
                 try:
-                    if not refresh:
+                    if not refresh and search_offset == 0:
                         cached = cache.lookup_search(provider.name, q)
                         if cached is not None:
                             console.print(f"  [dim]OK {provider.name} (cached, {len(cached)} results)[/dim]")
-                            results.extend(cached[:limit])
+                            results.extend(cached[:effective_limit])
+                            provider_offsets[provider.name] = len(cached[:effective_limit])
                             continue
-                    provider_results = provider.search(q)
-                    provider_results = [r for r in provider_results if r.is_valid()][:limit]
-                    console.print(f"  [green]OK {provider.name} ({len(provider_results)} results)[/green]")
-                    if provider_results:
+                    search_result = provider.search(q, limit=effective_limit, offset=search_offset)
+
+                    # Handle both SupplierSearchPage and list returns
+                    if isinstance(search_result, SupplierSearchPage):
+                        provider_results = [r for r in search_result.items if r.is_valid()]
+                        has_more_remote = has_more_remote or search_result.has_more
+                        total_str = ""
+                        if search_result.total_available:
+                            total_str = f" of {search_result.total_available}"
+                        console.print(f"  [green]OK {provider.name} ({len(provider_results)} results{total_str})[/green]")
+                        provider_offsets[provider.name] = search_offset + len(provider_results)
+                    else:
+                        provider_results = [r for r in search_result if r.is_valid()][:effective_limit]
+                        console.print(f"  [green]OK {provider.name} ({len(provider_results)} results)[/green]")
+                        provider_offsets[provider.name] = len(provider_results)
+                        has_more_remote = has_more_remote or (len(provider_results) == effective_limit)
+
+                    if provider_results and search_offset == 0:
                         cache.store_search(provider.name, q, provider_results)
                     results.extend(provider_results)
                 except Exception as e:
                     console.print(f"  [red]FAIL {provider.name}: {e}[/red]")
-            return results
+            return results, provider_offsets, has_more_remote
 
-        all_results = _run_search(query_str)
+        all_results, provider_offsets, has_more_remote = _run_search(query_str)
 
         if debug:
             console.print(f"\n[dim]Debug: cache_key = {rich_escape(query_str)}[/dim]")
@@ -1289,8 +1322,9 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
                 console.print(f"\n  {rich_escape(mpn)}  {status}")
                 for cr in summary["results"]:
                     p_status = "[green]PASS[/green]" if cr.passed else "[red]FAIL[/red]"
-                    actual = rich_escape(str(cr.actual_value or "?"))
-                    console.print(f"    {cr.constraint.field}: expected {_op_to_prefix(cr.constraint.op)}{cr.constraint.value}, actual {actual}, {p_status}")
+                    actual = rich_escape(str(cr.actual_value)) if cr.actual_value else "?"
+                    source_info = f" from {cr.source}" if cr.source else ""
+                    console.print(f"    {cr.constraint.field}: expected {_op_to_prefix(cr.constraint.op)}{cr.constraint.value}, actual {actual}{source_info}, {p_status}")
 
         # Fallback query handling
         fallback_used = None
@@ -1304,15 +1338,16 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
                 console.print(f"    {i+1}. {mpn}")
                 for cr in summary["results"]:
                     if not cr.passed:
-                        actual = rich_escape(str(cr.actual_value or "?"))
-                        console.print(f"       [red]FAIL[/red] {cr.constraint.field}: expected {_op_to_prefix(cr.constraint.op)}{cr.constraint.value}, actual {actual}")
+                        actual = rich_escape(str(cr.actual_value)) if cr.actual_value else "?"
+                        source_info = f" from {cr.source}" if cr.source else ""
+                        console.print(f"       [red]FAIL[/red] {cr.constraint.field}: expected {_op_to_prefix(cr.constraint.op)}{cr.constraint.value}, actual {actual}{source_info}")
 
             # Try fallback queries
             fallbacks = cmgr.build_fallback_queries(ref_name, schematic_value=schematic_value)
             for fb_query in fallbacks:
                 console.print(f"\n  [dim]Trying fallback query:[/dim]")
                 console.print(f"    {rich_escape(fb_query)}")
-                fb_results = _run_search(fb_query)
+                fb_results, _, _ = _run_search(fb_query)
                 if fb_results:
                     for r in fb_results:
                         r.badges = compute_badges(r, fb_results, query=fb_query)
@@ -1348,7 +1383,9 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
             last_updated=now,
             original_results=all_results,
             active_result_ids=[r.result_id for r in all_results],
+            provider_offsets=provider_offsets,
         )
+        session._has_more_remote = has_more_remote
         mgr = _get_session_manager()
         mgr.save(session)
 
@@ -1362,7 +1399,175 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
         console.print(table)
 
     # -------------------------------------------------------------------
-    # Subcommand aliases (M8.7) — hidden short forms for human use
+    # Pagination commands (M9.3)
+    # -------------------------------------------------------------------
+
+    @supplier_app.command("more")
+    def supplier_more_cmd(
+        source: str = typer.Argument(".", help="Session source (always '.')."),
+        mini: bool = typer.Option(True, "--mini/--full", "-q/-Q", help="Compact output."),
+    ) -> None:
+        """Show next page of results from the active search session.
+
+        If at the last local page, fetches more results from the provider.
+        """
+        mgr = _get_session_manager()
+        session = mgr.load()
+        if not session:
+            console.print("[yellow]No active search session. Run a search first.[/yellow]")
+            raise typer.Exit(1)
+
+        if session.has_next_page():
+            # We have more local results to show
+            session.current_page += 1
+        else:
+            # At the end of local results — try to fetch more from provider
+            fetched_more = False
+            if session.provider_offsets:
+                from footfindr.suppliers.base import SupplierSearchPage
+                providers = _resolve_providers(None, None, False)
+                provider_map = {p.name: p for p in providers}
+
+                for sup_name, current_offset in session.provider_offsets.items():
+                    provider = provider_map.get(sup_name)
+                    if not provider:
+                        continue
+
+                    console.print(f"[dim]Fetching more results from {sup_name} (offset={current_offset})...[/dim]")
+                    try:
+                        search_result = provider.search(
+                            session.query,
+                            limit=session.page_size,
+                            offset=current_offset,
+                        )
+
+                        if isinstance(search_result, SupplierSearchPage):
+                            new_items = search_result.items
+                        else:
+                            new_items = search_result
+
+                        # Deduplicate by (supplier, supplier_pn)
+                        existing_keys = set()
+                        for r in session.original_results:
+                            key = (getattr(r, 'supplier', ''), getattr(r, 'supplier_pn', ''))
+                            existing_keys.add(key)
+
+                        unique_new = []
+                        for item in new_items:
+                            key = (getattr(item, 'supplier', ''), getattr(item, 'supplier_pn', ''))
+                            if key not in existing_keys:
+                                unique_new.append(item)
+                                existing_keys.add(key)
+
+                        if unique_new:
+                            session.original_results.extend(unique_new)
+                            session.active_result_ids.extend([r.result_id for r in unique_new])
+                            session.provider_offsets[sup_name] = current_offset + len(new_items)
+                            session.current_page += 1
+                            fetched_more = True
+                            console.print(f"  [green]{len(unique_new)} new results fetched[/green]")
+                        else:
+                            console.print(f"  [dim]No new unique results from {sup_name}[/dim]")
+                    except Exception as e:
+                        console.print(f"  [red]Failed to fetch more from {sup_name}: {e}[/red]")
+
+            if not fetched_more:
+                console.print("[yellow]No more results available.[/yellow]")
+
+        mgr.save(session)
+
+        page_results = session.get_current_page()
+        if not page_results:
+            console.print("[yellow]No results on this page.[/yellow]")
+            return
+
+        console.print(f"\n[dim]{session.get_page_status_line()}[/dim]")
+        if mini:
+            table = render_mini_table(
+                page_results, query=session.query,
+                status_line=session.get_status_line(),
+            )
+        else:
+            table = render_search_table(page_results, query=session.query)
+        console.print(table)
+
+        if session.has_next_page():
+            console.print(f"[dim]Use 'ff sup more .' for next page[/dim]")
+        else:
+            console.print(f"[dim]Try 'ff sup more .' to fetch more from provider[/dim]")
+
+    @supplier_app.command("next")
+    def supplier_next_cmd(
+        source: str = typer.Argument(".", help="Session source."),
+        mini: bool = typer.Option(True, "--mini/--full", "-q/-Q", help="Compact output."),
+    ) -> None:
+        """Move to next page (alias for 'more')."""
+        supplier_more_cmd(source, mini)
+
+    @supplier_app.command("prev")
+    def supplier_prev_cmd(
+        source: str = typer.Argument(".", help="Session source."),
+        mini: bool = typer.Option(True, "--mini/--full", "-q/-Q", help="Compact output."),
+    ) -> None:
+        """Move to previous page of results."""
+        mgr = _get_session_manager()
+        session = mgr.load()
+        if not session:
+            console.print("[yellow]No active search session.[/yellow]")
+            raise typer.Exit(1)
+
+        if session.has_prev_page():
+            session.current_page -= 1
+        else:
+            console.print("[yellow]Already on the first page.[/yellow]")
+
+        mgr.save(session)
+
+        page_results = session.get_current_page()
+        console.print(f"\n[dim]{session.get_page_status_line()}[/dim]")
+        if mini:
+            table = render_mini_table(
+                page_results, query=session.query,
+                status_line=session.get_status_line(),
+            )
+        else:
+            table = render_search_table(page_results, query=session.query)
+        console.print(table)
+
+    @supplier_app.command("page")
+    def supplier_page_cmd(
+        source: str = typer.Argument(".", help="Session source."),
+        page_num: int = typer.Argument(..., help="Page number (1-based)."),
+        mini: bool = typer.Option(True, "--mini/--full", "-q/-Q", help="Compact output."),
+    ) -> None:
+        """Jump to a specific page of results."""
+        mgr = _get_session_manager()
+        session = mgr.load()
+        if not session:
+            console.print("[yellow]No active search session.[/yellow]")
+            raise typer.Exit(1)
+
+        total = session.total_pages()
+        if page_num < 1 or page_num > total:
+            console.print(f"[yellow]Page {page_num} out of range (1-{total}).[/yellow]")
+            raise typer.Exit(1)
+
+        session.current_page = page_num
+        mgr.save(session)
+
+        page_results = session.get_current_page()
+        console.print(f"\n[dim]{session.get_page_status_line()}[/dim]")
+        if mini:
+            table = render_mini_table(
+                page_results, query=session.query,
+                status_line=session.get_status_line(),
+            )
+        else:
+            table = render_search_table(page_results, query=session.query)
+        console.print(table)
+
+    # -------------------------------------------------------------------
+    # Subcommand aliases (M8.7 + M9.3) — hidden short forms for human use
     # -------------------------------------------------------------------
     supplier_app.command("s", hidden=True)(supplier_search_cmd)
     supplier_app.command("filt", hidden=True)(supplier_filter_cmd)
@@ -1376,6 +1581,12 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
     supplier_app.command("exp", hidden=True)(supplier_explain_cmd)
     supplier_app.command("ch", hidden=True)(supplier_choose_cmd)
     supplier_app.command("sf", hidden=True)(supplier_search_for_cmd)
+
+    # Pagination aliases (M9.3)
+    supplier_app.command("m", hidden=True)(supplier_more_cmd)
+    supplier_app.command("n", hidden=True)(supplier_next_cmd)
+    supplier_app.command("p", hidden=True)(supplier_prev_cmd)
+    supplier_app.command("pg", hidden=True)(supplier_page_cmd)
 
     # Session sub-app already registered as "session"; add "sess" alias
     supplier_app.add_typer(session_app, name="sess", hidden=True)
@@ -1395,3 +1606,4 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
     # lib promote-supplier aliases
     lib_app.command("psup", hidden=True)(lib_promote_supplier_cmd)
     lib_app.command("prom-sup", hidden=True)(lib_promote_supplier_cmd)
+

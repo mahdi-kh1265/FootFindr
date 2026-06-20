@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import math
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -182,12 +183,17 @@ def compute_relevance(part: SupplierPart, query: str) -> int:
         0 = exact MPN match
         1 = MPN starts with query
         2 = MPN contains query as meaningful token
-        3 = description strongly matches query
+        3 = description strongly matches query / parametric match
         4 = low relevance (query only in description/accessory context)
         5 = unrelated
     """
     q_upper = query.upper().strip()
     mpn_upper = (part.mpn or "").upper()
+
+    # For parametric/keyword queries, MPN substring matching is meaningless.
+    # Return a moderate relevance — actual filtering is done by constraints.
+    if not is_mpn_like_query(query):
+        return 3
 
     if mpn_upper == q_upper:
         return 0
@@ -345,6 +351,11 @@ class SearchSession:
     selected_result_id: str | None = None
     quantity: int | None = None
 
+    # Pagination (M9.3)
+    page_size: int = 10
+    current_page: int = 1
+    provider_offsets: dict[str, int] = field(default_factory=dict)
+
     def get_active_results(self) -> list[SupplierPart]:
         """Return the filtered/sorted subset of results."""
         id_set = set(self.active_result_ids)
@@ -408,6 +419,43 @@ class SearchSession:
             parts.append(f"filters: {'; '.join(filter_descs)}")
 
         return " | ".join(parts)
+
+    # --- Pagination methods (M9.3) ---
+
+    def total_pages(self) -> int:
+        """Total pages based on active results and page size."""
+        total = len(self.get_active_results())
+        return max(1, math.ceil(total / self.page_size))
+
+    def get_page(self, page: int) -> list[SupplierPart]:
+        """Return the subset of active results for a given page (1-based)."""
+        active = self.get_active_results()
+        page = max(1, min(page, self.total_pages()))
+        start = (page - 1) * self.page_size
+        end = start + self.page_size
+        return active[start:end]
+
+    def get_current_page(self) -> list[SupplierPart]:
+        """Return results for the current page."""
+        return self.get_page(self.current_page)
+
+    def has_next_page(self) -> bool:
+        """True if there are more results beyond the current page."""
+        return self.current_page < self.total_pages()
+
+    def has_prev_page(self) -> bool:
+        """True if there is a previous page."""
+        return self.current_page > 1
+
+    def get_page_status_line(self) -> str:
+        """Compact page status: 'Page: 1 | Showing: 1-10 of 20 fetched'."""
+        active = self.get_active_results()
+        total = len(active)
+        if total == 0:
+            return "No results"
+        start = (self.current_page - 1) * self.page_size + 1
+        end = min(self.current_page * self.page_size, total)
+        return f"Page: {self.current_page}/{self.total_pages()} | Showing: {start}-{end} of {total} fetched"
 
     def is_single_supplier(self) -> bool:
         """True if all active results are from the same supplier."""
@@ -616,6 +664,10 @@ class SessionManager:
             "quantity": session.quantity,
             "active_result_ids": session.active_result_ids,
             "original_results": [_part_to_dict(p) for p in session.original_results],
+            # Pagination (M9.3)
+            "page_size": session.page_size,
+            "current_page": session.current_page,
+            "provider_offsets": session.provider_offsets,
         }
         self._session_file.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
 
@@ -647,6 +699,10 @@ class SessionManager:
             sort_descending=data.get("sort_descending", True),
             selected_result_id=data.get("selected_result_id"),
             quantity=data.get("quantity"),
+            # Pagination (M9.3)
+            page_size=data.get("page_size", 10),
+            current_page=data.get("current_page", 1),
+            provider_offsets=data.get("provider_offsets", {}),
         )
 
     def clear(self) -> None:

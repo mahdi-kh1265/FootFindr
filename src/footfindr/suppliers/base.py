@@ -52,8 +52,10 @@ class SupplierProvider(ABC):
         query: str,
         *,
         category: str | None = None,
+        limit: int = 25,
+        offset: int = 0,
         **filters: Any,
-    ) -> list[SupplierPart]:
+    ) -> "list[SupplierPart] | SupplierSearchPage":
         """Search for parts matching a query string."""
         ...
 
@@ -145,3 +147,23 @@ class SupplierProvider(ABC):
             "FootFindr will never submit orders without explicit user command: "
             "ff order submit --supplier <name> --from-cart <cart_id>"
         )
+
+
+# ---------------------------------------------------------------------------
+# Search page result (M9.3b)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SupplierSearchPage:
+    """Result of a paginated supplier search.
+
+    Returned by providers that support pagination.
+    Contains the items plus pagination metadata.
+    """
+    items: list[SupplierPart]
+    supplier: str
+    query: str
+    limit: int
+    offset: int
+    total_available: int | None = None
+    has_more: bool = False

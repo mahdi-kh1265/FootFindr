@@ -197,10 +197,12 @@ class NexarProvider(SupplierProvider):
         query: str,
         *,
         category: str | None = None,
+        limit: int = 25,
+        offset: int = 0,
         **filters: Any,
     ) -> list[SupplierPart]:
         """Search parts using Nexar GraphQL."""
-        data = self._graphql(_SEARCH_QUERY, {"mpn": query, "limit": 10})
+        data = self._graphql(_SEARCH_QUERY, {"mpn": query, "limit": min(limit, 20)})
 
         results = data.get("supSearchMpn", {}).get("results", [])
         parts = []

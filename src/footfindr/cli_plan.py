@@ -109,6 +109,21 @@ def plan_show(
             console.print(f"       Target file: {step.target_file}")
             if step.reason:
                 console.print(f"       Reason: {step.reason}")
+
+            # Field-level diffs for schematic updates (M9.3 amendment 3)
+            if step.operation == "update_schematic" and isinstance(step.new_value, dict):
+                old = step.old_value if isinstance(step.old_value, dict) else {}
+                console.print(f"\n       [bold]Field changes for {step.target_key}:[/bold]")
+                for field_name, new_val in sorted(step.new_value.items()):
+                    old_val = old.get(field_name, "—")
+                    if not old_val:
+                        old_val = "—"
+                    if old_val == new_val:
+                        console.print(f"         {field_name}: {new_val} [dim](unchanged)[/dim]")
+                    else:
+                        console.print(f"         {field_name}: {old_val} → {new_val}")
+                console.print()
+
             if step.warnings:
                 for w in step.warnings:
                     console.print(f"       [yellow]⚠ {w}[/yellow]")

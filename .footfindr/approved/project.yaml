@@ -1,0 +1,12 @@
+parts:
+- internal_pn: CAP-4U7-25V-X6S-0603
+  category: other
+  manufacturer: Murata Electronics
+  mpn: GRT188C81E475KE13D
+  description: CAP CER 4.7UF 25V X6S 0603
+  package: 0603 (1608 Metric)
+  approved: true
+  status: approved
+  library: project
+  source_vendor: Murata Electronics
+  promoted_at: '2026-06-20T22:04:43.369622+00:00'

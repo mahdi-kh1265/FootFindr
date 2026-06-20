@@ -149,7 +149,8 @@ class TestBuildSearchQuery:
         mgr.set_constraint("C1", "voltage", ">=25V")
 
         query, _ = mgr.build_search_query("C1", schematic_value="0.1uF")
-        assert "0.1uF" in query
+        # Canonicalization renders 0.1uF → 100nF (normalized display form)
+        assert "100nF" in query or "0.1uF" in query
         assert "25V" in query
         assert "capacitor" in query.lower()
 

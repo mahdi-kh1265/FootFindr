@@ -150,6 +150,8 @@ class JLCPCBProvider(SupplierProvider):
         query: str,
         *,
         category: str | None = None,
+        limit: int = 25,
+        offset: int = 0,
         **filters: Any,
     ) -> list[SupplierPart]:
         """Search parts by keyword on JLCPCB/LCSC."""

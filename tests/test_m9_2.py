@@ -190,8 +190,10 @@ class TestQueryDedup:
         mgr.set_constraint("C1", "package", "0603")
 
         query, _ = mgr.build_search_query("C1", schematic_value="4.7u")
-        # Should not have both 4.7u AND 4.7uF
-        assert query.count("4.7u") + query.count("4.7uF") == 1
+        # After canonicalization, 4.7u → 4.7uF; dedup ensures only one instance
+        assert query.count("4.7uF") == 1, f"Expected exactly one '4.7uF' in query: {query}"
+        # Bare '4.7u ' (not part of '4.7uF') should not appear
+        assert "4.7u " not in query, f"Bare '4.7u' should not appear in query: {query}"
         assert "25V" in query
         assert "X7R" in query
         assert "0603" in query
@@ -204,8 +206,8 @@ class TestQueryDedup:
         mgr.set_constraint("C1", "voltage", ">=25V")
 
         query, _ = mgr.build_search_query("C1", schematic_value="4.7u")
-        # Both should appear since they are different values
-        assert "4.7u" in query
+        # Both should appear since they are different values (canonicalized form)
+        assert "4.7uF" in query
         assert "100nF" in query
 
 

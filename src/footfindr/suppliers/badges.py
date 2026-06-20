@@ -37,12 +37,14 @@ def compute_badges(
     context: list[SupplierPart] | None = None,
     *,
     query: str | None = None,
+    constraint_passed: bool | None = None,
 ) -> list[str]:
     """Compute badges for a supplier part.
 
     ``context`` is the full result set, used for relative comparisons
     (e.g. EXPENSIVE).
     ``query`` is the original search query, used for relevance scoring.
+    ``constraint_passed`` if True, suppresses LOW_RELEVANCE badge.
     """
     badges: list[str] = []
 
@@ -81,12 +83,14 @@ def compute_badges(
     if part.lcsc_pn:
         badges.append("JLC_AVAILABLE")
 
-    # Relevance
-    if query:
-        from footfindr.suppliers.session import compute_relevance
-        score = compute_relevance(part, query)
-        if score >= 4:
-            badges.append("LOW_RELEVANCE")
+    # Relevance — skip for parametric queries and constraint-passing parts
+    if query and constraint_passed is not True:
+        from footfindr.suppliers.session import compute_relevance, is_mpn_like_query
+        # Only apply MPN-based relevance for MPN-like queries
+        if is_mpn_like_query(query):
+            score = compute_relevance(part, query)
+            if score >= 4:
+                badges.append("LOW_RELEVANCE")
 
     # Footprint always needs review (no auto-binding)
     badges.append("FOOTPRINT_REVIEW")
