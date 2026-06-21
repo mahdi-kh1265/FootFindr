@@ -2253,6 +2253,10 @@ _reg_constraint(app)
 from footfindr.cli_plan import register_plan_commands as _reg_plan
 _reg_plan(app)
 
+# M9.4: Register intelligence commands (net, rails, cap, suggest)
+from footfindr.cli_intelligence import register_intelligence_commands as _reg_intel
+_reg_intel(app)
+
 
 # M8.7: Alias discovery command
 @app.command("aliases")

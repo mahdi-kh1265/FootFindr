@@ -1,0 +1,1263 @@
+{
+  "ref": "C1",
+  "timestamp": "2026-06-21T23:16:38.773489+00:00",
+  "context_hash": "61cc0b7dd8bbb713",
+  "schema_version": "0.2.0",
+  "scoring_policy_version": "probabilistic_package_utility_v1",
+  "source_project": "test-board",
+  "created_at": "2026-06-21T23:16:38.773489+00:00",
+  "role": "rail_decoupling",
+  "role_confidence": 0.9759,
+  "role_probabilities": {
+    "rail_decoupling": 0.9879,
+    "bulk": 0.0121,
+    "dc_block": 0.0,
+    "rc_filter": 0.0,
+    "timing_compensation": 0.0,
+    "crystal_rf": 0.0,
+    "unknown": 0.0
+  },
+  "package_ranking": [
+    {
+      "package": "0805",
+      "viable_count": 0,
+      "active_count": 0,
+      "in_stock_count": 0,
+      "total_stock": 0,
+      "manufacturer_count": 0,
+      "median_price": null,
+      "length_mm": 2.0,
+      "width_mm": 1.25,
+      "area_mm2": 2.5,
+      "height_mm": 1.25,
+      "score": 0.4354,
+      "terms": [
+        {
+          "name": "u_electrical",
+          "value": 0.0,
+          "weight": 0.12,
+          "contribution": 0.0,
+          "source_facts": [
+            "Viable part count for this package"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_derating",
+          "value": 0.5,
+          "weight": 0.1,
+          "contribution": 0.05,
+          "source_facts": [
+            "Package voltage headroom estimate"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_dc_bias",
+          "value": 0.2622,
+          "weight": 0.08,
+          "contribution": 0.021,
+          "source_facts": [
+            "DC bias derating risk"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_package_availability",
+          "value": 0.0,
+          "weight": 0.1,
+          "contribution": 0.0,
+          "source_facts": [
+            "Wilson LCB=0.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_supply_diversity",
+          "value": 0.0,
+          "weight": 0.06,
+          "contribution": 0.0,
+          "source_facts": [
+            "Entropy=0.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_stock",
+          "value": 0.0,
+          "weight": 0.08,
+          "contribution": 0.0,
+          "source_facts": [
+            "Total stock=0"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_price",
+          "value": 0.5,
+          "weight": 0.08,
+          "contribution": 0.04,
+          "source_facts": [
+            "Median=$None"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_area",
+          "value": 0.875,
+          "weight": 0.06,
+          "contribution": 0.0525,
+          "source_facts": [
+            "Area=2.50mm\u00b2"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_height",
+          "value": 0.75,
+          "weight": 0.03,
+          "contribution": 0.0225,
+          "source_facts": [
+            "Height=1.25mm"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_footprint",
+          "value": 1.0,
+          "weight": 0.05,
+          "contribution": 0.05,
+          "source_facts": [
+            "Footprint availability"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_assembly",
+          "value": 1.0,
+          "weight": 0.02,
+          "contribution": 0.02,
+          "source_facts": [
+            "Assembly difficulty for 0805"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_role_fit",
+          "value": 0.9928,
+          "weight": 0.06,
+          "contribution": 0.0596,
+          "source_facts": [
+            "Role=rail_decoupling, conf=0.976"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_data_quality",
+          "value": 1.0,
+          "weight": 0.04,
+          "contribution": 0.04,
+          "source_facts": [
+            "Attr completeness=1.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "i_small_high_cv_risk",
+          "value": 1.0,
+          "weight": 0.05,
+          "contribution": 0.05,
+          "source_facts": [
+            "Risk penalty=0.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "i_avail_diversity_synergy",
+          "value": 0.0,
+          "weight": 0.04,
+          "contribution": 0.0,
+          "source_facts": [
+            "Availability \u00d7 diversity"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "i_role_package_fit",
+          "value": 0.9928,
+          "weight": 0.03,
+          "contribution": 0.0298,
+          "source_facts": [
+            "Role \u00d7 footprint \u00d7 pin completeness"
+          ],
+          "missing_data_penalty": 0.0
+        }
+      ],
+      "evidence": [
+        "Package 0805: 0 viable, 0 active, 0 in stock, 0 total units, 0 manufacturers",
+        "No pricing data available",
+        "Reject reasons: capacitance_mismatch=10"
+      ],
+      "package_evidence": {
+        "package": "0805",
+        "raw_count": 10,
+        "parsed_count": 10,
+        "viable_count": 0,
+        "active_count": 0,
+        "in_stock_count": 0,
+        "total_stock": 0,
+        "manufacturer_count": 0,
+        "manufacturer_entropy": 0.0,
+        "median_price": null,
+        "price_quantiles": {},
+        "lifecycle_distribution": {
+          "active": 9,
+          "not for new designs": 1
+        },
+        "attribute_completeness": 1.0,
+        "reject_reasons": {
+          "capacitance_mismatch": 10
+        },
+        "first_raw_mpns": [
+          "C2012X7R1A475K125AC",
+          "LMK212B7475KG-T",
+          "0805ZC475KAT2A",
+          "F921A475MPA",
+          "C0805C475K8PACTU"
+        ],
+        "query_strings": [
+          "4.7u 10.0V 0805 capacitor"
+        ]
+      }
+    },
+    {
+      "package": "1206",
+      "viable_count": 0,
+      "active_count": 0,
+      "in_stock_count": 0,
+      "total_stock": 0,
+      "manufacturer_count": 0,
+      "median_price": null,
+      "length_mm": 3.2,
+      "width_mm": 1.6,
+      "area_mm2": 5.120000000000001,
+      "height_mm": 1.6,
+      "score": 0.4316,
+      "terms": [
+        {
+          "name": "u_electrical",
+          "value": 0.0,
+          "weight": 0.12,
+          "contribution": 0.0,
+          "source_facts": [
+            "Viable part count for this package"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_derating",
+          "value": 0.5,
+          "weight": 0.1,
+          "contribution": 0.05,
+          "source_facts": [
+            "Package voltage headroom estimate"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_dc_bias",
+          "value": 0.3405,
+          "weight": 0.08,
+          "contribution": 0.0272,
+          "source_facts": [
+            "DC bias derating risk"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_package_availability",
+          "value": 0.0,
+          "weight": 0.1,
+          "contribution": 0.0,
+          "source_facts": [
+            "Wilson LCB=0.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_supply_diversity",
+          "value": 0.0,
+          "weight": 0.06,
+          "contribution": 0.0,
+          "source_facts": [
+            "Entropy=0.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_stock",
+          "value": 0.0,
+          "weight": 0.08,
+          "contribution": 0.0,
+          "source_facts": [
+            "Total stock=0"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_price",
+          "value": 0.5,
+          "weight": 0.08,
+          "contribution": 0.04,
+          "source_facts": [
+            "Median=$None"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_area",
+          "value": 0.744,
+          "weight": 0.06,
+          "contribution": 0.0446,
+          "source_facts": [
+            "Area=5.12mm\u00b2"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_height",
+          "value": 0.68,
+          "weight": 0.03,
+          "contribution": 0.0204,
+          "source_facts": [
+            "Height=1.60mm"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_footprint",
+          "value": 1.0,
+          "weight": 0.05,
+          "contribution": 0.05,
+          "source_facts": [
+            "Footprint availability"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_assembly",
+          "value": 1.0,
+          "weight": 0.02,
+          "contribution": 0.02,
+          "source_facts": [
+            "Assembly difficulty for 1206"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_role_fit",
+          "value": 0.9928,
+          "weight": 0.06,
+          "contribution": 0.0596,
+          "source_facts": [
+            "Role=rail_decoupling, conf=0.976"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_data_quality",
+          "value": 1.0,
+          "weight": 0.04,
+          "contribution": 0.04,
+          "source_facts": [
+            "Attr completeness=1.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "i_small_high_cv_risk",
+          "value": 1.0,
+          "weight": 0.05,
+          "contribution": 0.05,
+          "source_facts": [
+            "Risk penalty=0.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "i_avail_diversity_synergy",
+          "value": 0.0,
+          "weight": 0.04,
+          "contribution": 0.0,
+          "source_facts": [
+            "Availability \u00d7 diversity"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "i_role_package_fit",
+          "value": 0.9928,
+          "weight": 0.03,
+          "contribution": 0.0298,
+          "source_facts": [
+            "Role \u00d7 footprint \u00d7 pin completeness"
+          ],
+          "missing_data_penalty": 0.0
+        }
+      ],
+      "evidence": [
+        "Package 1206: 0 viable, 0 active, 0 in stock, 0 total units, 0 manufacturers",
+        "No pricing data available",
+        "Reject reasons: capacitance_mismatch=10"
+      ],
+      "package_evidence": {
+        "package": "1206",
+        "raw_count": 10,
+        "parsed_count": 10,
+        "viable_count": 0,
+        "active_count": 0,
+        "in_stock_count": 0,
+        "total_stock": 0,
+        "manufacturer_count": 0,
+        "manufacturer_entropy": 0.0,
+        "median_price": null,
+        "price_quantiles": {},
+        "lifecycle_distribution": {
+          "active": 8,
+          "not for new designs": 2
+        },
+        "attribute_completeness": 1.0,
+        "reject_reasons": {
+          "capacitance_mismatch": 10
+        },
+        "first_raw_mpns": [
+          "TAJA475K010RNJ",
+          "CL31B475KPHNNNE",
+          "TAJA475K010TNJ",
+          "LMK316B7475KL-T",
+          "GRM31CR61A475KA01L"
+        ],
+        "query_strings": [
+          "4.7u 10.0V 1206 capacitor"
+        ]
+      }
+    },
+    {
+      "package": "0603",
+      "viable_count": 0,
+      "active_count": 0,
+      "in_stock_count": 0,
+      "total_stock": 0,
+      "manufacturer_count": 0,
+      "median_price": null,
+      "length_mm": 1.6,
+      "width_mm": 0.8,
+      "area_mm2": 1.2800000000000002,
+      "height_mm": 0.8,
+      "score": 0.3754,
+      "terms": [
+        {
+          "name": "u_electrical",
+          "value": 0.0,
+          "weight": 0.12,
+          "contribution": 0.0,
+          "source_facts": [
+            "Viable part count for this package"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_derating",
+          "value": 0.5,
+          "weight": 0.1,
+          "contribution": 0.05,
+          "source_facts": [
+            "Package voltage headroom estimate"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_dc_bias",
+          "value": 0.2004,
+          "weight": 0.08,
+          "contribution": 0.016,
+          "source_facts": [
+            "DC bias derating risk"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_package_availability",
+          "value": 0.0,
+          "weight": 0.1,
+          "contribution": 0.0,
+          "source_facts": [
+            "Wilson LCB=0.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_supply_diversity",
+          "value": 0.0,
+          "weight": 0.06,
+          "contribution": 0.0,
+          "source_facts": [
+            "Entropy=0.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_stock",
+          "value": 0.0,
+          "weight": 0.08,
+          "contribution": 0.0,
+          "source_facts": [
+            "Total stock=0"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_price",
+          "value": 0.5,
+          "weight": 0.08,
+          "contribution": 0.04,
+          "source_facts": [
+            "Median=$None"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_area",
+          "value": 0.936,
+          "weight": 0.06,
+          "contribution": 0.0562,
+          "source_facts": [
+            "Area=1.28mm\u00b2"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_height",
+          "value": 0.84,
+          "weight": 0.03,
+          "contribution": 0.0252,
+          "source_facts": [
+            "Height=0.80mm"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_footprint",
+          "value": 1.0,
+          "weight": 0.05,
+          "contribution": 0.05,
+          "source_facts": [
+            "Footprint availability"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_assembly",
+          "value": 0.9,
+          "weight": 0.02,
+          "contribution": 0.018,
+          "source_facts": [
+            "Assembly difficulty for 0603"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_role_fit",
+          "value": 0.5,
+          "weight": 0.06,
+          "contribution": 0.03,
+          "source_facts": [
+            "Role=rail_decoupling, conf=0.976"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_data_quality",
+          "value": 1.0,
+          "weight": 0.04,
+          "contribution": 0.04,
+          "source_facts": [
+            "Attr completeness=1.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "i_small_high_cv_risk",
+          "value": 0.7,
+          "weight": 0.05,
+          "contribution": 0.035,
+          "source_facts": [
+            "Risk penalty=0.300"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "i_avail_diversity_synergy",
+          "value": 0.0,
+          "weight": 0.04,
+          "contribution": 0.0,
+          "source_facts": [
+            "Availability \u00d7 diversity"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "i_role_package_fit",
+          "value": 0.5,
+          "weight": 0.03,
+          "contribution": 0.015,
+          "source_facts": [
+            "Role \u00d7 footprint \u00d7 pin completeness"
+          ],
+          "missing_data_penalty": 0.0
+        }
+      ],
+      "evidence": [
+        "Package 0603: 0 viable, 0 active, 0 in stock, 0 total units, 0 manufacturers",
+        "No pricing data available",
+        "Reject reasons: capacitance_mismatch=10"
+      ],
+      "package_evidence": {
+        "package": "0603",
+        "raw_count": 10,
+        "parsed_count": 10,
+        "viable_count": 0,
+        "active_count": 0,
+        "in_stock_count": 0,
+        "total_stock": 0,
+        "manufacturer_count": 0,
+        "manufacturer_entropy": 0.0,
+        "median_price": null,
+        "price_quantiles": {},
+        "lifecycle_distribution": {
+          "active": 9,
+          "not for new designs": 1
+        },
+        "attribute_completeness": 1.0,
+        "reject_reasons": {
+          "capacitance_mismatch": 10
+        },
+        "first_raw_mpns": [
+          "CL10A475KP8NNNC",
+          "LMK107BJ475KA-T",
+          "CC0603KRX5R6BB475",
+          "C1608X6S1A475K080AC",
+          "GRM188C71A475KE11D"
+        ],
+        "query_strings": [
+          "4.7u 10.0V 0603 capacitor"
+        ]
+      }
+    },
+    {
+      "package": "0402",
+      "viable_count": 0,
+      "active_count": 0,
+      "in_stock_count": 0,
+      "total_stock": 0,
+      "manufacturer_count": 0,
+      "median_price": null,
+      "length_mm": 1.0,
+      "width_mm": 0.5,
+      "area_mm2": 0.5,
+      "height_mm": 0.5,
+      "score": 0.3581,
+      "terms": [
+        {
+          "name": "u_electrical",
+          "value": 0.0,
+          "weight": 0.12,
+          "contribution": 0.0,
+          "source_facts": [
+            "Viable part count for this package"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_derating",
+          "value": 0.5,
+          "weight": 0.1,
+          "contribution": 0.05,
+          "source_facts": [
+            "Package voltage headroom estimate"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_dc_bias",
+          "value": 0.1331,
+          "weight": 0.08,
+          "contribution": 0.0106,
+          "source_facts": [
+            "DC bias derating risk"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_package_availability",
+          "value": 0.0,
+          "weight": 0.1,
+          "contribution": 0.0,
+          "source_facts": [
+            "Wilson LCB=0.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_supply_diversity",
+          "value": 0.0,
+          "weight": 0.06,
+          "contribution": 0.0,
+          "source_facts": [
+            "Entropy=0.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_stock",
+          "value": 0.0,
+          "weight": 0.08,
+          "contribution": 0.0,
+          "source_facts": [
+            "Total stock=0"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_price",
+          "value": 0.5,
+          "weight": 0.08,
+          "contribution": 0.04,
+          "source_facts": [
+            "Median=$None"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_area",
+          "value": 0.975,
+          "weight": 0.06,
+          "contribution": 0.0585,
+          "source_facts": [
+            "Area=0.50mm\u00b2"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_height",
+          "value": 0.9,
+          "weight": 0.03,
+          "contribution": 0.027,
+          "source_facts": [
+            "Height=0.50mm"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_footprint",
+          "value": 1.0,
+          "weight": 0.05,
+          "contribution": 0.05,
+          "source_facts": [
+            "Footprint availability"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_assembly",
+          "value": 0.6,
+          "weight": 0.02,
+          "contribution": 0.012,
+          "source_facts": [
+            "Assembly difficulty for 0402"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_role_fit",
+          "value": 0.5,
+          "weight": 0.06,
+          "contribution": 0.03,
+          "source_facts": [
+            "Role=rail_decoupling, conf=0.976"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_data_quality",
+          "value": 1.0,
+          "weight": 0.04,
+          "contribution": 0.04,
+          "source_facts": [
+            "Attr completeness=1.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "i_small_high_cv_risk",
+          "value": 0.5,
+          "weight": 0.05,
+          "contribution": 0.025,
+          "source_facts": [
+            "Risk penalty=0.500"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "i_avail_diversity_synergy",
+          "value": 0.0,
+          "weight": 0.04,
+          "contribution": 0.0,
+          "source_facts": [
+            "Availability \u00d7 diversity"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "i_role_package_fit",
+          "value": 0.5,
+          "weight": 0.03,
+          "contribution": 0.015,
+          "source_facts": [
+            "Role \u00d7 footprint \u00d7 pin completeness"
+          ],
+          "missing_data_penalty": 0.0
+        }
+      ],
+      "evidence": [
+        "Package 0402: 0 viable, 0 active, 0 in stock, 0 total units, 0 manufacturers",
+        "No pricing data available",
+        "Reject reasons: capacitance_mismatch=10"
+      ],
+      "package_evidence": {
+        "package": "0402",
+        "raw_count": 10,
+        "parsed_count": 10,
+        "viable_count": 0,
+        "active_count": 0,
+        "in_stock_count": 0,
+        "total_stock": 0,
+        "manufacturer_count": 0,
+        "manufacturer_entropy": 0.0,
+        "median_price": null,
+        "price_quantiles": {},
+        "lifecycle_distribution": {
+          "active": 10
+        },
+        "attribute_completeness": 1.0,
+        "reject_reasons": {
+          "capacitance_mismatch": 10
+        },
+        "first_raw_mpns": [
+          "CL05A475MP5NRNC",
+          "CC0402MRX5R6BB475",
+          "GRM155R61A475MEAAD",
+          "CC0402KRX5R6BB475",
+          "GRT155R61A475ME13D"
+        ],
+        "query_strings": [
+          "4.7u 10.0V 0402 capacitor"
+        ]
+      }
+    },
+    {
+      "package": "0201",
+      "viable_count": 0,
+      "active_count": 0,
+      "in_stock_count": 0,
+      "total_stock": 0,
+      "manufacturer_count": 0,
+      "median_price": null,
+      "length_mm": 0.6,
+      "width_mm": 0.3,
+      "area_mm2": 0.18,
+      "height_mm": 0.3,
+      "score": 0.3028,
+      "terms": [
+        {
+          "name": "u_electrical",
+          "value": 0.0,
+          "weight": 0.12,
+          "contribution": 0.0,
+          "source_facts": [
+            "Viable part count for this package"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_derating",
+          "value": 0.5,
+          "weight": 0.1,
+          "contribution": 0.05,
+          "source_facts": [
+            "Package voltage headroom estimate"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_dc_bias",
+          "value": 0.0827,
+          "weight": 0.08,
+          "contribution": 0.0066,
+          "source_facts": [
+            "DC bias derating risk"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_package_availability",
+          "value": 0.0,
+          "weight": 0.1,
+          "contribution": 0.0,
+          "source_facts": [
+            "Wilson LCB=0.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_supply_diversity",
+          "value": 0.0,
+          "weight": 0.06,
+          "contribution": 0.0,
+          "source_facts": [
+            "Entropy=0.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_stock",
+          "value": 0.0,
+          "weight": 0.08,
+          "contribution": 0.0,
+          "source_facts": [
+            "Total stock=0"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_price",
+          "value": 0.5,
+          "weight": 0.08,
+          "contribution": 0.04,
+          "source_facts": [
+            "Median=$None"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_area",
+          "value": 0.991,
+          "weight": 0.06,
+          "contribution": 0.0595,
+          "source_facts": [
+            "Area=0.18mm\u00b2"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_height",
+          "value": 0.94,
+          "weight": 0.03,
+          "contribution": 0.0282,
+          "source_facts": [
+            "Height=0.30mm"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_footprint",
+          "value": 0.7,
+          "weight": 0.05,
+          "contribution": 0.035,
+          "source_facts": [
+            "Footprint availability"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_assembly",
+          "value": 0.3,
+          "weight": 0.02,
+          "contribution": 0.006,
+          "source_facts": [
+            "Assembly difficulty for 0201"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_role_fit",
+          "value": 0.5,
+          "weight": 0.06,
+          "contribution": 0.03,
+          "source_facts": [
+            "Role=rail_decoupling, conf=0.976"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "u_data_quality",
+          "value": 0.3,
+          "weight": 0.04,
+          "contribution": 0.012,
+          "source_facts": [
+            "Attr completeness=0.000"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "i_small_high_cv_risk",
+          "value": 0.5,
+          "weight": 0.05,
+          "contribution": 0.025,
+          "source_facts": [
+            "Risk penalty=0.500"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "i_avail_diversity_synergy",
+          "value": 0.0,
+          "weight": 0.04,
+          "contribution": 0.0,
+          "source_facts": [
+            "Availability \u00d7 diversity"
+          ],
+          "missing_data_penalty": 0.0
+        },
+        {
+          "name": "i_role_package_fit",
+          "value": 0.35,
+          "weight": 0.03,
+          "contribution": 0.0105,
+          "source_facts": [
+            "Role \u00d7 footprint \u00d7 pin completeness"
+          ],
+          "missing_data_penalty": 0.0
+        }
+      ],
+      "evidence": [
+        "Package 0201: 0 viable, 0 active, 0 in stock, 0 total units, 0 manufacturers",
+        "No pricing data available",
+        "Reject reasons: supplier_empty=1"
+      ],
+      "package_evidence": {
+        "package": "0201",
+        "raw_count": 0,
+        "parsed_count": 0,
+        "viable_count": 0,
+        "active_count": 0,
+        "in_stock_count": 0,
+        "total_stock": 0,
+        "manufacturer_count": 0,
+        "manufacturer_entropy": 0.0,
+        "median_price": null,
+        "price_quantiles": {},
+        "lifecycle_distribution": {},
+        "attribute_completeness": 0.0,
+        "reject_reasons": {
+          "supplier_empty": 1
+        },
+        "first_raw_mpns": [],
+        "query_strings": [
+          "4.7u 10.0V 0201 capacitor"
+        ]
+      }
+    }
+  ],
+  "candidate_ranking": [],
+  "top_candidate_mpn": null,
+  "top_package": null,
+  "evidence": [
+    {
+      "key": "value_raw",
+      "value": "4.7u",
+      "unit": null,
+      "source": "schematic Value field",
+      "confidence": 1.0,
+      "timestamp": "2026-06-21T23:16:33.421204+00:00",
+      "evidence": [
+        "Value field = '4.7u'"
+      ]
+    },
+    {
+      "key": "category",
+      "value": "capacitor",
+      "unit": null,
+      "source": "ref prefix / lib_id",
+      "confidence": 1.0,
+      "timestamp": "2026-06-21T23:16:33.421220+00:00",
+      "evidence": [
+        "Detected category: capacitor"
+      ]
+    },
+    {
+      "key": "pin_completeness",
+      "value": 1.0,
+      "unit": null,
+      "source": "net graph (kicad_sexpr)",
+      "confidence": 1.0,
+      "timestamp": "2026-06-21T23:16:33.435349+00:00",
+      "evidence": [
+        "Expected pins: 2",
+        "Resolved pins: 2",
+        "Completeness: 1.00"
+      ]
+    },
+    {
+      "key": "net_1",
+      "value": "+5V",
+      "unit": null,
+      "source": "net graph (kicad_sexpr)",
+      "confidence": 1.0,
+      "timestamp": "2026-06-21T23:16:33.435357+00:00",
+      "evidence": [
+        "Pin 1 connected to net +5V"
+      ]
+    },
+    {
+      "key": "net_2",
+      "value": "GND",
+      "unit": null,
+      "source": "net graph (kicad_sexpr)",
+      "confidence": 1.0,
+      "timestamp": "2026-06-21T23:16:33.435363+00:00",
+      "evidence": [
+        "Pin 2 connected to net GND"
+      ]
+    },
+    {
+      "key": "rail_GND",
+      "value": 0.0,
+      "unit": "V",
+      "source": "ground-symbol/name",
+      "confidence": 1.0,
+      "timestamp": "2026-06-21T23:16:33.435619+00:00",
+      "evidence": [
+        "GND matches ground-family pattern"
+      ]
+    },
+    {
+      "key": "rail_+3.3V",
+      "value": 3.3,
+      "unit": "V",
+      "source": "net-name",
+      "confidence": 1.0,
+      "timestamp": "2026-06-21T23:16:33.435623+00:00",
+      "evidence": [
+        "Inferred 3.3V from net name '+3.3V'"
+      ]
+    },
+    {
+      "key": "rail_+5V",
+      "value": 5.0,
+      "unit": "V",
+      "source": "net-name",
+      "confidence": 1.0,
+      "timestamp": "2026-06-21T23:16:33.435625+00:00",
+      "evidence": [
+        "Inferred 5.0V from net name '+5V'"
+      ]
+    },
+    {
+      "key": "role",
+      "value": "rail_decoupling",
+      "unit": null,
+      "source": "cap classifier (softmax)",
+      "confidence": 0.9759,
+      "timestamp": "2026-06-21T23:16:33.435810+00:00",
+      "evidence": [
+        "C1 1 -> +5V",
+        "C1 2 -> GND",
+        "Pin completeness: 1.00",
+        "Parser confidence: 1.00",
+        "P(rail_decoupling) = 0.9879",
+        "P(bulk) = 0.0121",
+        "P(rc_filter) = 0.0000",
+        "Margin (top - 2nd) = 0.9757",
+        "Final confidence = 0.9759",
+        "Model: softmax_cap_v1",
+        "+5V inferred as 5.0V rail from net-name"
+      ]
+    },
+    {
+      "key": "data_source",
+      "value": "live",
+      "unit": null,
+      "source": "package sweep",
+      "confidence": 1.0,
+      "timestamp": "2026-06-21T23:16:38.771165+00:00",
+      "evidence": [
+        "Supplier data source: live"
+      ]
+    }
+  ],
+  "weights_used": {
+    "u_electrical": 0.12,
+    "u_derating": 0.1,
+    "u_dc_bias": 0.08,
+    "u_package_availability": 0.1,
+    "u_supply_diversity": 0.06,
+    "u_stock": 0.08,
+    "u_price": 0.08,
+    "u_area": 0.06,
+    "u_height": 0.03,
+    "u_footprint": 0.05,
+    "u_assembly": 0.02,
+    "u_role_fit": 0.06,
+    "u_data_quality": 0.04,
+    "i_small_high_cv_risk": 0.05,
+    "i_avail_diversity_synergy": 0.04,
+    "i_role_package_fit": 0.03
+  },
+  "data_source": "live",
+  "decision": "no_recommendation",
+  "decision_reason": "No viable/rankable supplier-backed package evidence",
+  "rank_stability": {
+    "package_stats": {
+      "0805": {
+        "package": "0805",
+        "mean_score": 0.0,
+        "std_score": 0.0,
+        "p_win": 0.0,
+        "score_margin": 0.0
+      },
+      "1206": {
+        "package": "1206",
+        "mean_score": 0.0,
+        "std_score": 0.0,
+        "p_win": 0.0,
+        "score_margin": 0.0
+      },
+      "0603": {
+        "package": "0603",
+        "mean_score": 0.0,
+        "std_score": 0.0,
+        "p_win": 0.0,
+        "score_margin": 0.0
+      },
+      "0402": {
+        "package": "0402",
+        "mean_score": 0.0,
+        "std_score": 0.0,
+        "p_win": 0.0,
+        "score_margin": 0.0
+      },
+      "0201": {
+        "package": "0201",
+        "mean_score": 0.0,
+        "std_score": 0.0,
+        "p_win": 0.0,
+        "score_margin": 0.0
+      }
+    },
+    "decision": "no_recommendation",
+    "decision_reason": "No viable/rankable supplier-backed package evidence",
+    "n_samples": 0
+  },
+  "pin_completeness": 1.0
+}

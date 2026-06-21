@@ -13,7 +13,7 @@ This pack contains normalized Murata GRM part data for FootFindr.
 | Field | Value |
 |-------|-------|
 | Source type | manual_csv |
-| Real source | True |
+| Real source | True |              
 | Complete catalog | True |
 | Source file | murata-grm.csv |
 | Generated | 2026-06-19T19:48:59.716433+00:00 |
