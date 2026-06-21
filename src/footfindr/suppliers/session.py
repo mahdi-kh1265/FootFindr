@@ -356,6 +356,21 @@ class SearchSession:
     current_page: int = 1
     provider_offsets: dict[str, int] = field(default_factory=dict)
 
+    # Degraded pagination state (M9.3c)
+    pagination_status: str = "normal"  # "normal", "degraded", or "unverified"
+    provider_status: dict[str, dict] = field(default_factory=dict)
+
+    # Ref context for expand (M9.3c expand)
+    ref_name: str | None = None             # e.g. "C1"
+    base_query_parts: list[str] = field(default_factory=list)  # e.g. ["4.7uF", "25V", "0603"]
+    category: str | None = None             # e.g. "capacitor"
+
+    # Expansion metadata (M9.3c expand)
+    expanded: bool = False
+    expansion_strategy: str | None = None
+    expansion_queries_run: int = 0
+    expansion_new_results: int = 0
+
     def get_active_results(self) -> list[SupplierPart]:
         """Return the filtered/sorted subset of results."""
         id_set = set(self.active_result_ids)
@@ -668,6 +683,18 @@ class SessionManager:
             "page_size": session.page_size,
             "current_page": session.current_page,
             "provider_offsets": session.provider_offsets,
+            # Degraded pagination state (M9.3c)
+            "pagination_status": session.pagination_status,
+            "provider_status": session.provider_status,
+            # Ref context for expand (M9.3c expand)
+            "ref_name": session.ref_name,
+            "base_query_parts": session.base_query_parts,
+            "category": session.category,
+            # Expansion metadata (M9.3c expand)
+            "expanded": session.expanded,
+            "expansion_strategy": session.expansion_strategy,
+            "expansion_queries_run": session.expansion_queries_run,
+            "expansion_new_results": session.expansion_new_results,
         }
         self._session_file.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
 
@@ -703,6 +730,18 @@ class SessionManager:
             page_size=data.get("page_size", 10),
             current_page=data.get("current_page", 1),
             provider_offsets=data.get("provider_offsets", {}),
+            # Degraded pagination state (M9.3c)
+            pagination_status=data.get("pagination_status", "normal"),
+            provider_status=data.get("provider_status", {}),
+            # Ref context for expand (M9.3c expand)
+            ref_name=data.get("ref_name"),
+            base_query_parts=data.get("base_query_parts", []),
+            category=data.get("category"),
+            # Expansion metadata (M9.3c expand)
+            expanded=data.get("expanded", False),
+            expansion_strategy=data.get("expansion_strategy"),
+            expansion_queries_run=data.get("expansion_queries_run", 0),
+            expansion_new_results=data.get("expansion_new_results", 0),
         )
 
     def clear(self) -> None:

@@ -2152,6 +2152,7 @@ def supplier_lookup(
     mock: bool = typer.Option(False, "--mock", help="Use mock provider for testing."),
     no_cache: bool = typer.Option(False, "--no-cache", help="Skip cache, query provider directly."),
     refresh: bool = typer.Option(False, "--refresh", help="Force refresh from live provider (bypass cache)."),
+    add_to_session: bool = typer.Option(False, "--add-to-session", "--add", help="Add result to active search session."),
     debug: bool = typer.Option(False, "--debug", help="Show debug output (secrets redacted)."),
 ) -> None:
     """Look up a part by MPN via supplier cache and provider."""
@@ -2174,6 +2175,9 @@ def supplier_lookup(
             console.print(f"[bold cyan]Cache hit for {mpn}[/bold cyan]")
             for entry in cached:
                 _print_supplier_part(entry)
+            # If --add-to-session, merge cached results
+            if add_to_session and cached:
+                _merge_lookup_into_session(cached)
             cache.close()
             return
 
@@ -2194,6 +2198,9 @@ def supplier_lookup(
         cache.store(result)
         console.print(f"[bold green]Found via {provider.name}[/bold green] [dim](live)[/dim]")
         _print_supplier_part(result)
+        # If --add-to-session, merge into active session
+        if add_to_session:
+            _merge_lookup_into_session([result])
     elif result and not result.is_valid():
         console.print(
             f"[yellow]{provider.name} returned data but no usable product details for {mpn}.[/yellow]\n"
@@ -2203,6 +2210,37 @@ def supplier_lookup(
         console.print(f"[yellow]No results for {mpn} via {provider.name}[/yellow]")
 
     cache.close()
+
+
+def _merge_lookup_into_session(results: list) -> None:
+    """Merge lookup result(s) into the active search session."""
+    from footfindr.cli_supplier import _merge_results_into_session, _get_session_manager
+
+    mgr = _get_session_manager()
+    existing = mgr.load()
+
+    if existing:
+        merged, skipped = _merge_results_into_session(existing, results)
+        mgr.save(existing)
+        console.print(
+            f"[green]Added {merged} result(s) to active session "
+            f"({len(existing.original_results)} total, {skipped} duplicate(s) skipped)[/green]"
+        )
+    else:
+        # No existing session — create new from lookup
+        import datetime
+        from footfindr.suppliers.session import SearchSession
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        session = SearchSession(
+            query=results[0].mpn if results else "lookup",
+            suppliers=[results[0].supplier] if results else [],
+            created_at=now,
+            last_updated=now,
+            original_results=list(results),
+            active_result_ids=[r.result_id for r in results],
+        )
+        mgr.save(session)
+        console.print(f"[green]No existing session. Created new session with {len(results)} result(s).[/green]")
 
 
 # M8.5: Register variant browser commands from cli_supplier module
@@ -2546,8 +2584,11 @@ def supplier_auth_test(
     try:
         # Make the smallest possible API call
         result = provider.search("test", category=None)
+        # provider.search() may return SupplierSearchPage or list
+        items = result.items if hasattr(result, "items") else result
+        count = len(items)
         console.print(f"  [green]API test: OK using {provider._auth_mode or 'default'} token. "
-                       f"Got {len(result)} results.[/green]")
+                       f"Got {count} results.[/green]")
     except Exception as e:
         console.print(f"  [yellow]API test: failed ({e})[/yellow]")
         if provider_name.lower() == "digikey" and not has_3leg:

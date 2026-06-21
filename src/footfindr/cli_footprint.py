@@ -46,17 +46,36 @@ def register_footprint_commands(fp_app: typer.Typer) -> None:
         index, report = run_footprint_scan(project_dir=project_dir, reset=reset)
 
         # Display scan report
-        console.print("[bold]Scan Results:[/bold]")
-        _status_line("Project fp-lib-table", report.project_fp_table)
-        _status_line("Global fp-lib-table", report.global_fp_table)
+        console.print("[bold]Scan Sources:[/bold]")
+
+        # Footprint root source
+        if report.resolved_footprint_dir:
+            console.print(f"  footprint root:")
+            console.print(f"    {report.resolved_footprint_dir}")
+            console.print(f"    .pretty dirs found: {report.builtin_pretty_dirs_found}")
+            console.print(f"    footprints indexed: {report.builtin_footprints_indexed}")
+        else:
+            console.print("  footprint root:          [yellow]not found[/yellow]")
+
+        console.print()
+
+        # fp-lib-table sources
+        if report.global_fp_table != "not found":
+            console.print(f"  global fp-lib-table:")
+            console.print(f"    {report.global_fp_table}")
+        else:
+            console.print(f"  global fp-lib-table:     [dim]not found[/dim]")
+
+        if report.project_fp_table != "not found":
+            console.print(f"  project fp-lib-table:")
+            console.print(f"    {report.project_fp_table}")
+
+        console.print()
 
         if report.env_vars_found:
             console.print(f"  KiCad env vars:          [green]{', '.join(report.env_vars_found)}[/green]")
         else:
             console.print("  KiCad env vars:          [dim]none detected[/dim]")
-
-        if report.resolved_footprint_dir:
-            console.print(f"  Resolved footprint dir:  [green]{report.resolved_footprint_dir}[/green]")
 
         console.print()
 

@@ -403,7 +403,12 @@ def register_ref_commands(ref_app: typer.Typer) -> None:
                     "target_library": to_library or "",
                     "supplier": getattr(part, "supplier", ""),
                 },
-                collision_warnings=[cw.message for cw in collision_warnings],
+                # Only pass true conflict warnings to the plan — idempotent
+                # reuse ("Part already exists") should NOT block plan apply.
+                collision_warnings=[
+                    cw.message for cw in collision_warnings
+                    if cw.collision_type != "idempotent"
+                ],
                 do_apply=apply,
                 force=force,
             )

@@ -68,8 +68,10 @@ class ScanReport:
     env_vars_found: list[str]
     libraries_indexed: list[str]
     total_footprints: int
-    builtin_indexed: bool = False   # True if Capacitor_SMD + Resistor_SMD indexed
+    builtin_indexed: bool = False   # True if key footprint IDs are in the index
     resolved_footprint_dir: str = ""  # path used for ${KICADx_FOOTPRINT_DIR}
+    builtin_pretty_dirs_found: int = 0   # how many .pretty dirs in the root
+    builtin_footprints_indexed: int = 0  # how many footprints from the root scan
     errors: list[str] = field(default_factory=list)
 
 
@@ -159,6 +161,12 @@ _KICAD_VERSIONS = ["10.0", "9.0", "8.0", "7.0"]
 
 # Well-known built-in libraries that MUST be indexed for passive assignment
 _BUILTIN_LIBRARIES = {"Capacitor_SMD", "Resistor_SMD"}
+
+# Exact footprint IDs that must exist for builtin_indexed = True
+_BUILTIN_REQUIRED_FOOTPRINTS = {
+    "Capacitor_SMD:C_0603_1608Metric",
+    "Resistor_SMD:R_0603_1608Metric",
+}
 
 
 def _get_kicad_env_vars() -> dict[str, str]:
@@ -463,8 +471,14 @@ class FootprintIndex:
         project_dir: Path | None = None,
         config_overrides: dict[str, str] | None = None,
         reset: bool = False,
+        footprint_root: Path | None = None,
     ) -> ScanReport:
         """Full scan: parse fp-lib-tables, index all footprints.
+
+        If *footprint_root* is given (e.g.
+        ``C:\\Program Files\\KiCad\\10.0\\share\\kicad\\footprints``),
+        every direct child ``*.pretty`` directory is scanned **additively**
+        (i.e. always, not only when fp-lib-table entries are missing).
 
         Returns a ScanReport with scan diagnostics.
         """
@@ -481,8 +495,9 @@ class FootprintIndex:
 
         # Track which dir we resolved for diagnostics
         resolved_fp_dir = ""
-        for k in ("KICAD9_FOOTPRINT_DIR", "KICAD8_FOOTPRINT_DIR",
-                  "KICAD7_FOOTPRINT_DIR", "KICAD_FOOTPRINT_DIR"):
+        for k in ("KICAD10_FOOTPRINT_DIR", "KICAD9_FOOTPRINT_DIR",
+                  "KICAD8_FOOTPRINT_DIR", "KICAD7_FOOTPRINT_DIR",
+                  "KICAD_FOOTPRINT_DIR"):
             if k in env_vars:
                 resolved_fp_dir = env_vars[k]
                 break
@@ -523,6 +538,37 @@ class FootprintIndex:
         libraries_indexed: list[str] = []
         total = 0
 
+        # ----------------------------------------------------------------
+        # Phase 1: Scan the built-in footprint root (always, additive)
+        # ----------------------------------------------------------------
+        builtin_pretty_dirs_found = 0
+        builtin_footprints_indexed = 0
+        builtin_libs_set: set[str] = set()
+
+        if footprint_root and footprint_root.is_dir():
+            logger.info(f"Scanning built-in footprint root: {footprint_root}")
+            for child in sorted(footprint_root.iterdir()):
+                if child.is_dir() and child.suffix == ".pretty":
+                    builtin_pretty_dirs_found += 1
+                    lib_nick = child.stem  # e.g. "Capacitor_SMD"
+                    records = scan_pretty_directory(child, lib_nick, "builtin")
+                    if records:
+                        builtin_libs_set.add(lib_nick)
+                        builtin_footprints_indexed += len(records)
+                        total += len(records)
+                        self._insert_records(conn, records)
+                        logger.debug(
+                            f"  {lib_nick}: {len(records)} footprints"
+                        )
+            libraries_indexed.extend(sorted(builtin_libs_set))
+            logger.info(
+                f"Built-in root: {builtin_pretty_dirs_found} .pretty dirs, "
+                f"{builtin_footprints_indexed} footprints indexed"
+            )
+
+        # ----------------------------------------------------------------
+        # Phase 2: Scan fp-lib-table entries (additive, INSERT OR REPLACE)
+        # ----------------------------------------------------------------
         for entry, scope in all_entries:
             resolved = _resolve_uri(entry.uri, env_vars)
             if resolved is None:
@@ -531,13 +577,17 @@ class FootprintIndex:
 
             records = scan_pretty_directory(resolved, entry.name, scope)
             if records:
-                libraries_indexed.append(entry.name)
+                if entry.name not in libraries_indexed:
+                    libraries_indexed.append(entry.name)
                 total += len(records)
                 self._insert_records(conn, records)
 
         conn.commit()
 
-        builtin_ok = _BUILTIN_LIBRARIES.issubset(set(libraries_indexed))
+        # Verify builtin_indexed by checking exact footprint IDs
+        builtin_ok = all(
+            self.get(fp_id) is not None for fp_id in _BUILTIN_REQUIRED_FOOTPRINTS
+        )
 
         return ScanReport(
             project_fp_table=project_fp_table_status,
@@ -547,6 +597,8 @@ class FootprintIndex:
             total_footprints=total,
             builtin_indexed=builtin_ok,
             resolved_footprint_dir=resolved_fp_dir,
+            builtin_pretty_dirs_found=builtin_pretty_dirs_found,
+            builtin_footprints_indexed=builtin_footprints_indexed,
             errors=errors,
         )
 
@@ -680,12 +732,17 @@ def run_footprint_scan(
     """Run a full footprint scan, combining project + global fp-lib-tables.
 
     Automatically discovers KiCad install paths when env vars are not set.
+    The discovered/configured KiCad footprint root is **always** scanned
+    additively (every ``*.pretty`` child directory), regardless of what
+    the fp-lib-table files contain.
+
     Returns the index and a scan report.
     """
     fp_tables: list[Path] = []
 
     # 1. User config overrides
     overrides = dict(config_overrides or {})
+    footprint_root: Path | None = None
     try:
         from footfindr.config import load_user_config
         cfg = load_user_config()
@@ -700,16 +757,38 @@ def run_footprint_scan(
         user_fp_dir = cfg.get("kicad", {}).get("footprint-dir")
         if user_fp_dir:
             overrides["KICAD_FOOTPRINT_DIR"] = user_fp_dir
+            p = Path(user_fp_dir)
+            if p.is_dir():
+                footprint_root = p
     except Exception:
         pass
 
-    # 2. Project-local fp-lib-table
+    # 2. Resolve footprint root from env vars if not set via config
+    if footprint_root is None:
+        env_vars = _get_kicad_env_vars()
+        for key in ("KICAD10_FOOTPRINT_DIR", "KICAD9_FOOTPRINT_DIR",
+                    "KICAD8_FOOTPRINT_DIR", "KICAD7_FOOTPRINT_DIR",
+                    "KICAD_FOOTPRINT_DIR"):
+            val = env_vars.get(key)
+            if val:
+                p = Path(val)
+                if p.is_dir():
+                    footprint_root = p
+                    break
+
+    # 3. Auto-discover footprint root if still not found
+    if footprint_root is None:
+        discovered = discover_kicad_footprint_dirs()
+        if discovered:
+            footprint_root = discovered[0]
+
+    # 4. Project-local fp-lib-table
     if project_dir:
         proj_table = discover_project_fp_lib_table(project_dir)
         if proj_table:
             fp_tables.append(proj_table)
 
-    # 3. Global fp-lib-tables (auto-detect)
+    # 5. Global fp-lib-tables (auto-detect)
     global_tables = discover_global_fp_lib_tables()
     for gt in global_tables:
         if gt not in fp_tables:
@@ -722,6 +801,7 @@ def run_footprint_scan(
         project_dir=project_dir,
         config_overrides=overrides,
         reset=reset,
+        footprint_root=footprint_root,
     )
 
     return index, report

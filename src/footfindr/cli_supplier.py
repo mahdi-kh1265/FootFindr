@@ -173,6 +173,137 @@ def _print_status(session: SearchSession) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Session merge helpers (M9.3c)
+# ---------------------------------------------------------------------------
+
+def _dedupe_key(part) -> tuple:
+    """Build a dedupe key for a SupplierPart.
+
+    Primary: (supplier, supplier_pn)
+    Fallback if supplier_pn is missing: (supplier, normalized_mfr, normalized_mpn)
+    """
+    supplier = getattr(part, 'supplier', '') or ''
+    spn = getattr(part, 'supplier_pn', '') or ''
+    if spn:
+        return (supplier.lower(), spn.lower())
+    mfr = (getattr(part, 'manufacturer', '') or '').strip().upper()
+    mpn = (getattr(part, 'mpn', '') or '').strip().upper()
+    return (supplier.lower(), f"mfr:{mfr}", f"mpn:{mpn}")
+
+
+def _merge_results_into_session(
+    session: SearchSession,
+    new_results: list,
+) -> tuple[int, int]:
+    """Merge new results into an existing session, deduplicating.
+
+    Returns (merged_count, skipped_count).
+    """
+    existing_keys = set()
+    for r in session.original_results:
+        existing_keys.add(_dedupe_key(r))
+
+    merged = 0
+    skipped = 0
+    for item in new_results:
+        key = _dedupe_key(item)
+        if key not in existing_keys:
+            session.original_results.append(item)
+            session.active_result_ids.append(item.result_id)
+            existing_keys.add(key)
+            merged += 1
+        else:
+            skipped += 1
+
+    return merged, skipped
+
+# ---------------------------------------------------------------------------
+# Expansion shard generation (M9.3c expand)
+# ---------------------------------------------------------------------------
+
+_PASSIVE_MANUFACTURERS = [
+    "Murata", "TDK", "Samsung", "KYOCERA AVX", "KEMET", "Yageo",
+    "Vishay", "Panasonic", "Taiyo Yuden", "Bourns", "Wurth",
+]
+
+_CAP_DIELECTRICS = ["X5R", "X6S", "X7R", "X7S", "X8R", "C0G", "NP0"]
+
+# Category tokens to append to shards (keeps searches focused)
+_CATEGORY_SHARD_TOKENS: dict[str, str] = {
+    "capacitor": "capacitor",
+    "resistor": "resistor",
+    "inductor": "inductor",
+    "diode": "diode",
+    "led": "LED",
+    "transistor": "transistor",
+    "connector": "connector",
+    "crystal": "crystal",
+}
+
+
+def _generate_expansion_shards(
+    session: SearchSession,
+    strategy: str = "auto",
+    max_queries: int = 20,
+) -> list[str]:
+    """Generate narrower query shards for the expand command.
+
+    Returns a list of query strings (up to max_queries).
+    """
+    base = " ".join(session.base_query_parts) if session.base_query_parts else session.query
+    cat = session.category or ""
+    cat_token = _CATEGORY_SHARD_TOKENS.get(cat, "")
+
+    # If base_query_parts not available, try to strip category from session.query
+    if not session.base_query_parts:
+        for term in _CATEGORY_SHARD_TOKENS.values():
+            if base.endswith(f" {term}"):
+                base = base[: -len(f" {term}")].strip()
+                break
+            if base.endswith(f" ceramic {term}"):
+                base = base[: -len(f" ceramic {term}")].strip()
+                break
+
+    shards: list[str] = []
+
+    def _add_shard(query: str) -> bool:
+        """Add shard if not duplicate and under limit. Returns False if at limit."""
+        if len(shards) >= max_queries:
+            return False
+        if query not in shards:
+            shards.append(query)
+        return len(shards) < max_queries
+
+    if strategy in ("manufacturer", "auto"):
+        for mfr in _PASSIVE_MANUFACTURERS:
+            parts = [base, mfr]
+            if cat_token:
+                parts.append(cat_token)
+            if not _add_shard(" ".join(parts)):
+                return shards
+
+    if strategy in ("dielectric", "auto") and cat == "capacitor":
+        for diel in _CAP_DIELECTRICS:
+            parts = [base, diel]
+            if cat_token:
+                parts.append(cat_token)
+            if not _add_shard(" ".join(parts)):
+                return shards
+
+    if strategy == "auto" and cat == "capacitor":
+        # Combo shards: manufacturer + dielectric
+        for mfr in _PASSIVE_MANUFACTURERS:
+            for diel in _CAP_DIELECTRICS:
+                parts = [base, mfr, diel]
+                if cat_token:
+                    parts.append(cat_token)
+                if not _add_shard(" ".join(parts)):
+                    return shards
+
+    return shards
+
+
+# ---------------------------------------------------------------------------
 # Commands -- registered by register_supplier_commands()
 # ---------------------------------------------------------------------------
 
@@ -186,11 +317,12 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
         supplier: Optional[str] = typer.Option(None, "--supplier", "-s", help="Specific supplier."),
         suppliers: Optional[str] = typer.Option(None, "--suppliers", "-S", help="Comma-separated suppliers."),
         all_suppliers: bool = typer.Option(False, "--all", "-a", help="Query all configured suppliers."),
-        mini: bool = typer.Option(False, "--mini", "-q", help="Compact output."),
+        mini: bool = typer.Option(False, "--mini", "--min", "-q", help="Compact output."),
         limit: int = typer.Option(25, "--limit", "-l", help="Max results per supplier."),
         qty: Optional[int] = typer.Option(None, "--qty", "-n", help="Quantity for pricing."),
         refresh: bool = typer.Option(False, "--refresh", "-r", help="Bypass cache, query live."),
         cache_only: bool = typer.Option(False, "--cache-only", "-c", help="Only use cached results."),
+        add_to_session: bool = typer.Option(False, "--add-to-session", "--add", help="Merge results into active session instead of replacing it."),
         recommend_flag: bool = typer.Option(False, "--recommend", "-R", help="Show deterministic recommendations."),
         export: Optional[str] = typer.Option(None, "--export", "-e", help="Export to file (csv/md)."),
         group_by_supplier: bool = typer.Option(False, "--group-by-supplier", "-G", help="Group results by supplier."),
@@ -228,9 +360,10 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
                     console.print(f"  [dim]SKIP {provider.name} (no cached search)[/dim]")
                     continue
 
-                # Live search
-                results = provider.search(query)
-                results = [r for r in results if r.is_valid()][:limit]
+                # Live search — provider.search() may return SupplierSearchPage or list
+                search_result = provider.search(query)
+                raw_items = search_result.items if hasattr(search_result, "items") else search_result
+                results = [r for r in raw_items if r.is_valid()][:limit]
                 console.print(f"  [green]OK {provider.name} ({len(results)} results)[/green]")
 
                 # Cache the search result (separate from exact cache)
@@ -267,33 +400,66 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
         if not group_by_supplier:
             all_results = default_interleave_sort(all_results, query, qty)
 
-        # Save as active session
-        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        supplier_names = [p.name for p in providers]
-        session = SearchSession(
-            query=query,
-            suppliers=supplier_names,
-            created_at=now,
-            last_updated=now,
-            original_results=all_results,
-            active_result_ids=[r.result_id for r in all_results],
-            quantity=qty,
-        )
         mgr = _get_session_manager()
-        mgr.save(session)
+
+        # --add-to-session: merge into existing session
+        if add_to_session:
+            existing = mgr.load()
+            if existing:
+                merged, skipped = _merge_results_into_session(existing, all_results)
+                mgr.save(existing)
+                console.print(
+                    f"[green]Merged {merged} new result(s) into active session "
+                    f"({len(existing.original_results)} total, {skipped} duplicate(s) skipped)[/green]"
+                )
+                # Display merged session
+                display_results = existing.get_active_results()
+            else:
+                # No existing session — create new
+                now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                supplier_names = [p.name for p in providers]
+                session = SearchSession(
+                    query=query,
+                    suppliers=supplier_names,
+                    created_at=now,
+                    last_updated=now,
+                    original_results=all_results,
+                    active_result_ids=[r.result_id for r in all_results],
+                    quantity=qty,
+                )
+                mgr.save(session)
+                console.print(f"[green]No existing session. Created new session with {len(all_results)} result(s).[/green]")
+                display_results = all_results
+        else:
+            # Normal: replace session
+            now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            supplier_names = [p.name for p in providers]
+            session = SearchSession(
+                query=query,
+                suppliers=supplier_names,
+                created_at=now,
+                last_updated=now,
+                original_results=all_results,
+                active_result_ids=[r.result_id for r in all_results],
+                quantity=qty,
+            )
+            mgr.save(session)
+            display_results = all_results
 
         # Display
         columns = _parse_columns(columns_str)
+        current_session = mgr.load()
+        status_line = current_session.get_status_line() if current_session else ""
         if mini:
             table = render_mini_table(
-                all_results, qty=qty, query=query,
+                display_results, qty=qty, query=query,
                 columns=columns, view=view,
-                status_line=session.get_status_line(),
+                status_line=status_line,
             )
         else:
-            table = render_search_table(all_results, qty=qty, query=query)
+            table = render_search_table(display_results, qty=qty, query=query)
         console.print(table)
-        console.print(f"\n[dim]{len(all_results)} results saved as active search context (use . to reference)[/dim]")
+        console.print(f"\n[dim]{len(display_results)} results saved as active search context (use . to reference)[/dim]")
 
         # Grouped by supplier
         if group_by_supplier:
@@ -351,7 +517,7 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
     @supplier_app.command("list")
     def supplier_list_cmd(
         ref: str = typer.Argument(".", help="Active result set ref (use '.')."),
-        mini: bool = typer.Option(False, "--mini", "-q", help="Compact output."),
+        mini: bool = typer.Option(False, "--mini", "--min", "-q", help="Compact output."),
         show_all: bool = typer.Option(False, "--all", "-A", help="Show all fetched results (no pagination)."),
         part_numbers_only: bool = typer.Option(False, "--part-numbers-only", "-p", help="MPN list only."),
         columns_str: Optional[str] = typer.Option(None, "--columns", "--cols", help="Comma-separated column list."),
@@ -385,6 +551,32 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
         total_fetched = len(session.get_active_results())
         if show_all:
             console.print(f"[dim]Showing all {total_fetched} fetched results[/dim]")
+            # Show provider total info when provider reports more than fetched
+            if session.provider_status:
+                for sup_name, status in session.provider_status.items():
+                    total_avail = status.get("provider_total_available")
+                    pag_status = status.get("pagination_status", session.pagination_status)
+                    if total_avail and total_avail > total_fetched:
+                        console.print(
+                            f"[yellow]{sup_name} reports {total_avail} total matches, "
+                            f"but only {total_fetched} unique results have been fetched.[/yellow]"
+                        )
+                        if pag_status == "degraded_duplicate_page" or session.pagination_status == "degraded":
+                            console.print(
+                                "[yellow]Provider pagination is degraded for this query.[/yellow]"
+                            )
+                            console.print(
+                                "[dim]Showing locally fetched/expanded results. Use:\n"
+                                "  ff sup expand .     (runs narrower queries to gather more unique candidates)\n"
+                                "  ff sup search <exact MPN> --supplier <s> --refresh --add-to-session[/dim]"
+                            )
+                        else:
+                            # Unverified — not yet proven degraded
+                            console.print(
+                                "[dim]Use:\n"
+                                "  ff sup more .       (may return duplicates)\n"
+                                "  ff sup expand .     (runs narrower queries to gather more unique candidates)[/dim]"
+                            )
 
         if mini or show_all or columns or view:
             table = render_mini_table(
@@ -405,7 +597,7 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
     def supplier_group_cmd(
         ref: str = typer.Argument(".", help="Active result set ref."),
         field: str = typer.Argument(..., help="Field to group by (package, temp, supplier, etc.)."),
-        mini: bool = typer.Option(False, "--mini", "-q", help="Compact output."),
+        mini: bool = typer.Option(False, "--mini", "--min", "-q", help="Compact output."),
         mpn_variants: bool = typer.Option(False, "--mpn-variants", "-M", help="Group by manufacturer MPN."),
     ) -> None:
         """Group active search results by a field."""
@@ -431,7 +623,7 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
         ref: str = typer.Argument(".", help="Active result set ref."),
         field: str = typer.Argument(..., help="Field to filter on."),
         value: str = typer.Argument(..., help="Filter value (e.g. 'DFN', '>100', 'Active')."),
-        mini: bool = typer.Option(False, "--mini", "-q", help="Compact output."),
+        mini: bool = typer.Option(False, "--mini", "--min", "-q", help="Compact output."),
         columns_str: Optional[str] = typer.Option(None, "--columns", "--cols", help="Comma-separated column list."),
         view: Optional[str] = typer.Option(None, "--view", "-v", help="Named view."),
     ) -> None:
@@ -507,7 +699,7 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
         asc: bool = typer.Option(False, "--asc", "-A", help="Sort ascending."),
         then: Optional[str] = typer.Option(None, "--then", "-T", help="Secondary sort field (multi-sort)."),
         add: Optional[str] = typer.Option(None, "--add", "-a", help="Add secondary sort field."),
-        mini: bool = typer.Option(False, "--mini", "-q", help="Compact output."),
+        mini: bool = typer.Option(False, "--mini", "--min", "-q", help="Compact output."),
         columns_str: Optional[str] = typer.Option(None, "--columns", "--cols", help="Comma-separated column list."),
         view: Optional[str] = typer.Option(None, "--view", "-v", help="Named view."),
     ) -> None:
@@ -1205,7 +1397,7 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
     ) -> None:
         """Search suppliers using constraints defined for a schematic reference."""
         from rich.markup import escape as rich_escape
-        from footfindr.constraints import ConstraintManager, _op_to_prefix, apply_constraints_to_results, check_part_constraints
+        from footfindr.constraints import ConstraintManager, _op_to_prefix, apply_constraints_to_results, check_part_constraints, infer_category
 
         # --full overrides --mini
         if full:
@@ -1249,6 +1441,9 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
         cache = SupplierCache()
         providers = _resolve_providers(supplier, suppliers, all_suppliers)
 
+        # Track provider_total_available across search calls
+        _provider_total_available: dict[str, int | None] = {}
+
         def _run_search(q: str, search_limit: int | None = None, search_offset: int = 0) -> tuple[list, dict[str, int], bool]:
             """Execute search for a given query across providers.
 
@@ -1278,6 +1473,7 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
                         total_str = ""
                         if search_result.total_available:
                             total_str = f" of {search_result.total_available}"
+                            _provider_total_available[provider.name] = search_result.total_available
                         console.print(f"  [green]OK {provider.name} ({len(provider_results)} results{total_str})[/green]")
                         provider_offsets[provider.name] = search_offset + len(provider_results)
                     else:
@@ -1373,6 +1569,26 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
 
         all_results = default_interleave_sort(passing, query_str)
 
+        # Build base_query_parts: query parts without the category term
+        # These are used by expand to generate shard queries
+        _base_parts = []
+        cat, _ = infer_category(ref_name)
+        _CATEGORY_SEARCH_TERMS = {
+            "capacitor": "ceramic capacitor", "resistor": "resistor",
+            "inductor": "inductor", "diode": "diode",
+            "led": "LED", "transistor": "transistor",
+            "connector": "connector", "crystal": "crystal",
+        }
+        cat_term = _CATEGORY_SEARCH_TERMS.get(cat or "", "")
+        effective_query = fallback_used or query_str
+        if cat_term and effective_query.endswith(cat_term):
+            _base_parts = effective_query[: -len(cat_term)].strip().split()
+        elif cat_term:
+            # Strip last word of category term
+            _base_parts = [w for w in effective_query.split() if w.lower() not in cat_term.lower().split()]
+        else:
+            _base_parts = effective_query.split()
+
         # Save session
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         supplier_names = [p.name for p in providers]
@@ -1384,8 +1600,22 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
             original_results=all_results,
             active_result_ids=[r.result_id for r in all_results],
             provider_offsets=provider_offsets,
+            # Ref context for expand
+            ref_name=ref_name,
+            base_query_parts=_base_parts,
+            category=cat,
         )
         session._has_more_remote = has_more_remote
+
+        # Store provider_total_available from initial search
+        for pname, total in _provider_total_available.items():
+            if total and total > len(all_results):
+                session.provider_status[pname] = {
+                    "provider_total_available": total,
+                    "fetched_unique": len(all_results),
+                    "pagination_status": "unverified",
+                }
+
         mgr = _get_session_manager()
         mgr.save(session)
 
@@ -1405,7 +1635,8 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
     @supplier_app.command("more")
     def supplier_more_cmd(
         source: str = typer.Argument(".", help="Session source (always '.')."),
-        mini: bool = typer.Option(True, "--mini/--full", "-q/-Q", help="Compact output."),
+        mini: bool = typer.Option(True, "--mini/--full", "--min", "-q/-Q", help="Compact output."),
+        debug: bool = typer.Option(False, "--debug", "-d", help="Debug pagination."),
     ) -> None:
         """Show next page of results from the active search session.
 
@@ -1417,6 +1648,15 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
             console.print("[yellow]No active search session. Run a search first.[/yellow]")
             raise typer.Exit(1)
 
+        if debug:
+            console.print(f"[dim]query: {session.query}[/dim]")
+            console.print(f"[dim]page_size (limit): {session.page_size}[/dim]")
+            console.print(f"[dim]current_page: {session.current_page}[/dim]")
+            console.print(f"[dim]total_pages: {session.total_pages()}[/dim]")
+            console.print(f"[dim]total_results: {len(session.original_results)}[/dim]")
+            console.print(f"[dim]provider_offsets: {session.provider_offsets}[/dim]")
+            console.print(f"[dim]session suppliers: {session.suppliers}[/dim]")
+
         if session.has_next_page():
             # We have more local results to show
             session.current_page += 1
@@ -1425,15 +1665,34 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
             fetched_more = False
             if session.provider_offsets:
                 from footfindr.suppliers.base import SupplierSearchPage
-                providers = _resolve_providers(None, None, False)
+                # Use session's suppliers list to resolve the correct providers
+                sup_names = list(session.provider_offsets.keys())
+                providers = _resolve_providers(
+                    sup_names[0] if len(sup_names) == 1 else None,
+                    ",".join(sup_names) if len(sup_names) > 1 else None,
+                    False,
+                )
                 provider_map = {p.name: p for p in providers}
+
+                if debug:
+                    console.print(f"[dim]resolved providers: {list(provider_map.keys())}[/dim]")
 
                 for sup_name, current_offset in session.provider_offsets.items():
                     provider = provider_map.get(sup_name)
                     if not provider:
+                        if debug:
+                            console.print(f"[dim]provider '{sup_name}' not found in resolved providers[/dim]")
                         continue
 
                     console.print(f"[dim]Fetching more results from {sup_name} (offset={current_offset})...[/dim]")
+                    if debug:
+                        console.print(f"[dim]DigiKey request payload fields:[/dim]")
+                        console.print(f"[dim]  Keywords: {session.query!r}[/dim]")
+                        console.print(f"[dim]  RecordCount: {min(session.page_size, 50)}[/dim]")
+                        console.print(f"[dim]  RecordStartPosition: {current_offset}[/dim]")
+                        console.print(f"[dim]  ExcludeMarketPlaceProducts: True[/dim]")
+                        cache_key = f"supplier={sup_name} query={session.query.strip().upper()!r} offset={current_offset}"
+                        console.print(f"[dim]cache key (search cache only used for offset=0): {cache_key}[/dim]")
                     try:
                         search_result = provider.search(
                             session.query,
@@ -1443,8 +1702,20 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
 
                         if isinstance(search_result, SupplierSearchPage):
                             new_items = search_result.items
+                            if debug:
+                                console.print(f"[dim]provider total_available: {search_result.total_available}[/dim]")
+                                console.print(f"[dim]provider has_more: {search_result.has_more}[/dim]")
+                                console.print(f"[dim]provider offset returned: {search_result.offset}[/dim]")
+                                console.print(f"[dim]provider limit returned: {search_result.limit}[/dim]")
                         else:
                             new_items = search_result
+
+                        if debug:
+                            console.print(f"[dim]raw returned count: {len(new_items)}[/dim]")
+                            raw_mpns = [getattr(it, 'mpn', '?') for it in new_items[:15]]
+                            console.print(f"[dim]raw MPNs (first 15): {raw_mpns}[/dim]")
+                            raw_spns = [getattr(it, 'supplier_pn', '?') for it in new_items[:15]]
+                            console.print(f"[dim]raw supplier PNs (first 15): {raw_spns}[/dim]")
 
                         # Deduplicate by (supplier, supplier_pn)
                         existing_keys = set()
@@ -1452,12 +1723,28 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
                             key = (getattr(r, 'supplier', ''), getattr(r, 'supplier_pn', ''))
                             existing_keys.add(key)
 
+                        if debug:
+                            console.print(f"[dim]existing dedupe keys count: {len(existing_keys)}[/dim]")
+                            # Show first 15 existing supplier PNs for comparison
+                            existing_spns = [getattr(r, 'supplier_pn', '?') for r in session.original_results[:15]]
+                            console.print(f"[dim]existing page-1 supplier PNs (first 15): {existing_spns}[/dim]")
+                            # Check overlap
+                            raw_key_set = {(getattr(it, 'supplier', ''), getattr(it, 'supplier_pn', '')) for it in new_items}
+                            overlap = existing_keys & raw_key_set
+                            console.print(f"[dim]raw vs existing overlap: {len(overlap)} of {len(raw_key_set)} raw items are duplicates[/dim]")
+
                         unique_new = []
                         for item in new_items:
                             key = (getattr(item, 'supplier', ''), getattr(item, 'supplier_pn', ''))
                             if key not in existing_keys:
                                 unique_new.append(item)
                                 existing_keys.add(key)
+
+                        if debug:
+                            console.print(f"[dim]new unique count: {len(unique_new)}[/dim]")
+                            if not unique_new and new_items:
+                                console.print(f"[yellow]WARNING: DigiKey returned {len(new_items)} items for offset={current_offset} but ALL are duplicates of page-1.[/yellow]")
+                                console.print(f"[yellow]This means DigiKey API may be ignoring RecordStartPosition, or returning relevance-ranked results that overlap.[/yellow]")
 
                         if unique_new:
                             session.original_results.extend(unique_new)
@@ -1467,11 +1754,37 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
                             fetched_more = True
                             console.print(f"  [green]{len(unique_new)} new results fetched[/green]")
                         else:
-                            console.print(f"  [dim]No new unique results from {sup_name}[/dim]")
+                            # Mark pagination as degraded for this provider
+                            total_avail = None
+                            if isinstance(search_result, SupplierSearchPage):
+                                total_avail = search_result.total_available
+                            session.pagination_status = "degraded"
+                            session.provider_status[sup_name] = {
+                                "provider_total_available": total_avail,
+                                "fetched_unique": len(session.original_results),
+                                "pagination_status": "degraded_duplicate_page",
+                                "last_attempted_offset": current_offset,
+                                "last_raw_count": len(new_items),
+                                "last_new_unique_count": 0,
+                            }
+                            if total_avail:
+                                console.print(
+                                    f"\n[yellow]{sup_name} reports {total_avail} total matches, "
+                                    f"but returned a duplicate page for offset={current_offset}.[/yellow]"
+                                )
+                                console.print(
+                                    "[yellow]Scrolling is degraded for this query.[/yellow]"
+                                )
+                            else:
+                                console.print(f"  [dim]No new unique results from {sup_name}[/dim]")
+                            console.print(
+                                "[dim]Use exact MPN/DigiKey PN search or narrow the query, "
+                                "then add with --add-to-session.[/dim]"
+                            )
                     except Exception as e:
                         console.print(f"  [red]Failed to fetch more from {sup_name}: {e}[/red]")
 
-            if not fetched_more:
+            if not fetched_more and session.pagination_status != "degraded":
                 console.print("[yellow]No more results available.[/yellow]")
 
         mgr.save(session)
@@ -1491,7 +1804,15 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
             table = render_search_table(page_results, query=session.query)
         console.print(table)
 
-        if session.has_next_page():
+        # Footer: do NOT suggest 'more' for provider scrolling if degraded
+        if session.pagination_status == "degraded":
+            console.print(
+                "[dim]Provider pagination is degraded. Showing locally fetched/expanded results.\n"
+                "Use:\n"
+                "  ff sup expand .     (runs narrower queries to gather more unique candidates)\n"
+                "  ff sup search <exact> --supplier <s> --refresh --add-to-session[/dim]"
+            )
+        elif session.has_next_page():
             console.print(f"[dim]Use 'ff sup more .' for next page[/dim]")
         else:
             console.print(f"[dim]Try 'ff sup more .' to fetch more from provider[/dim]")
@@ -1499,7 +1820,7 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
     @supplier_app.command("next")
     def supplier_next_cmd(
         source: str = typer.Argument(".", help="Session source."),
-        mini: bool = typer.Option(True, "--mini/--full", "-q/-Q", help="Compact output."),
+        mini: bool = typer.Option(True, "--mini/--full", "--min", "-q/-Q", help="Compact output."),
     ) -> None:
         """Move to next page (alias for 'more')."""
         supplier_more_cmd(source, mini)
@@ -1507,7 +1828,7 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
     @supplier_app.command("prev")
     def supplier_prev_cmd(
         source: str = typer.Argument(".", help="Session source."),
-        mini: bool = typer.Option(True, "--mini/--full", "-q/-Q", help="Compact output."),
+        mini: bool = typer.Option(True, "--mini/--full", "--min", "-q/-Q", help="Compact output."),
     ) -> None:
         """Move to previous page of results."""
         mgr = _get_session_manager()
@@ -1538,7 +1859,7 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
     def supplier_page_cmd(
         source: str = typer.Argument(".", help="Session source."),
         page_num: int = typer.Argument(..., help="Page number (1-based)."),
-        mini: bool = typer.Option(True, "--mini/--full", "-q/-Q", help="Compact output."),
+        mini: bool = typer.Option(True, "--mini/--full", "--min", "-q/-Q", help="Compact output."),
     ) -> None:
         """Jump to a specific page of results."""
         mgr = _get_session_manager()
@@ -1567,6 +1888,295 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
         console.print(table)
 
     # -------------------------------------------------------------------
+    # Expand command (M9.3c) — sharded search to work around degraded pagination
+    # -------------------------------------------------------------------
+
+    @supplier_app.command("expand")
+    def supplier_expand_cmd(
+        source: str = typer.Argument(".", help="Session source (always '.')."),
+        supplier: Optional[str] = typer.Option(None, "--supplier", "-s", help="Specific supplier."),
+        strategy: str = typer.Option("auto", "--strategy", help="Shard strategy: auto, manufacturer, dielectric."),
+        max_queries: int = typer.Option(20, "--max-queries", help="Maximum expansion queries to run."),
+        max_results: int = typer.Option(100, "--max-results", help="Stop after this many total unique results."),
+        mini: bool = typer.Option(True, "--mini/--full", "--min", "-q/-Q", help="Compact output."),
+        debug: bool = typer.Option(False, "--debug", "-d", help="Show per-shard details (human-readable)."),
+        trace_http: bool = typer.Option(False, "--trace-http", help="Enable httpcore/httpx wire-level logs."),
+    ) -> None:
+        """Expand search results by running narrower shard queries.
+
+        Works around DigiKey degraded pagination by running multiple targeted
+        searches (by manufacturer, dielectric, etc.) and merging unique results.
+        """
+        if trace_http:
+            logging.basicConfig(level=logging.DEBUG)
+
+        mgr = _get_session_manager()
+        session = mgr.load()
+        if not session:
+            console.print("[yellow]No active search session.[/yellow]")
+            console.print("[dim]Run a search first: ff sup sf <ref> -s dk -r --min[/dim]")
+            raise typer.Exit(1)
+
+        # Generate shards
+        shards = _generate_expansion_shards(session, strategy=strategy, max_queries=max_queries)
+        if not shards:
+            console.print("[yellow]Could not generate expansion queries.[/yellow]")
+            if not session.base_query_parts:
+                console.print("[dim]Session has no base query parts. Try: ff sup sf <ref> -s dk -r --min[/dim]")
+            raise typer.Exit(1)
+
+        console.print(f"\n[bold cyan]Expanding search: {session.query}[/bold cyan]")
+        console.print(f"[dim]Strategy: {strategy} | Max queries: {max_queries} | Max results: {max_results}[/dim]")
+        if session.ref_name:
+            console.print(f"[dim]Ref: {session.ref_name} | Category: {session.category or '?'}[/dim]")
+        console.print(f"[dim]Generated {len(shards)} shard queries[/dim]\n")
+
+        if debug:
+            for i, shard in enumerate(shards):
+                console.print(f"[dim]  Shard {i+1}: {shard}[/dim]")
+            console.print()
+
+        # Load constraints for the ref (if available)
+        constraints = []
+        if session.ref_name:
+            try:
+                from footfindr.constraints import ConstraintManager, apply_constraints_to_results
+                cmgr = ConstraintManager()
+                constraints = cmgr.get_constraints_for(session.ref_name)
+            except Exception:
+                pass
+
+        # Resolve providers
+        providers = _resolve_providers(supplier, None, False) if supplier else []
+        if not providers and session.suppliers:
+            providers = _resolve_providers(session.suppliers[0], None, False)
+
+        if not providers:
+            console.print("[red]No suppliers resolved. Use --supplier to specify one.[/red]")
+            raise typer.Exit(1)
+
+        from footfindr.suppliers.base import SupplierSearchPage
+
+        starting_count = len(session.original_results)
+        total_merged = 0
+        total_skipped = 0
+        queries_run = 0
+        failed_shards: list[tuple[str, str]] = []
+
+        for i, shard in enumerate(shards):
+            # Check if we've hit the max_results target
+            if len(session.original_results) >= max_results:
+                console.print(f"\n[green]Reached max_results ({max_results}). Stopping expansion.[/green]")
+                break
+
+            queries_run += 1
+
+            for provider in providers:
+                try:
+                    search_result = provider.search(shard, limit=10)
+                    raw_items = search_result.items if hasattr(search_result, "items") else search_result
+                    raw_count = len(raw_items)
+
+                    # Apply constraints before merge (if available)
+                    if constraints:
+                        from footfindr.constraints import apply_constraints_to_results
+                        passing, _ = apply_constraints_to_results(constraints, raw_items)
+                    else:
+                        # No constraints — take all valid items
+                        passing = [r for r in raw_items if r.is_valid()]
+
+                    pass_count = len(passing)
+
+                    # Merge unique passing results
+                    merged, skipped = _merge_results_into_session(session, passing)
+                    total_merged += merged
+                    total_skipped += skipped
+
+                    if debug or merged > 0:
+                        console.print(
+                            f"  Shard {i+1}/{len(shards)}: {shard}\n"
+                            f"    raw: {raw_count}, pass constraints: {pass_count}, new unique: {merged}"
+                        )
+                    elif queries_run <= 3 or queries_run % 5 == 0:
+                        # Progress indicator for non-debug
+                        console.print(f"  Shard {i+1}/{len(shards)}: +{merged} new", end="\r")
+
+                except Exception as e:
+                    failed_shards.append((shard, str(e)))
+                    console.print(f"  [red]Shard {i+1}/{len(shards)}: FAIL ({e})[/red]")
+                    # Keep going — don't lose already-merged results
+
+        # Update expansion metadata on session
+        session.expanded = True
+        session.expansion_strategy = strategy
+        session.expansion_queries_run = queries_run
+        session.expansion_new_results = total_merged
+
+        mgr.save(session)
+
+        # Summary
+        final_count = len(session.original_results)
+        console.print(
+            f"\n[bold green]Expanded from {starting_count} to {final_count} unique results "
+            f"across {queries_run} queries[/bold green]"
+        )
+        if total_merged == 0:
+            console.print(
+                "[yellow]No new unique results found. All shard queries returned duplicates "
+                "or results that failed constraints.[/yellow]"
+            )
+            if debug:
+                console.print("[dim]This means DigiKey returned the same top results for all narrower queries.[/dim]")
+        if failed_shards:
+            console.print(f"[yellow]{len(failed_shards)} shard(s) failed (results from other shards preserved)[/yellow]")
+            if debug:
+                for shard, err in failed_shards:
+                    console.print(f"  [dim]FAIL: {shard}: {err}[/dim]")
+
+        # Display updated results
+        display_results = session.get_active_results()
+        if mini:
+            table = render_mini_table(
+                display_results, query=session.query,
+                status_line=session.get_status_line(),
+            )
+        else:
+            table = render_search_table(display_results, query=session.query)
+        console.print(table)
+        console.print(f"\n[dim]{len(display_results)} results in active session[/dim]")
+
+    # -------------------------------------------------------------------
+    # Debug pagination probe (M9.3c diagnostics)
+    # -------------------------------------------------------------------
+
+    @supplier_app.command("debug-pagination")
+    def supplier_debug_pagination_cmd(
+        supplier_name: str = typer.Argument(..., help="Supplier to probe (e.g. digikey)."),
+        query: str = typer.Argument(..., help="Search query to test pagination with."),
+        trace_http: bool = typer.Option(False, "--trace-http", help="Enable httpcore/httpx wire-level logs."),
+    ) -> None:
+        """Probe supplier pagination to determine if offset scrolling works.
+
+        Sends multiple requests at different offsets and record counts,
+        then reports overlap between pages and whether native pagination
+        is usable or degraded.
+        """
+        if trace_http:
+            logging.basicConfig(level=logging.DEBUG)
+
+        from footfindr.suppliers.base import SupplierSearchPage
+
+        providers = _resolve_providers(supplier_name, None, False)
+        if not providers:
+            console.print(f"[red]No provider found for: {supplier_name}[/red]")
+            raise typer.Exit(1)
+
+        provider = providers[0]
+        console.print(f"\n[bold cyan]Pagination probe: {provider.name}[/bold cyan]")
+        console.print(f"[dim]Query: {query}[/dim]")
+
+        # Report auth mode
+        auth_mode = getattr(provider, "_auth_mode", "unknown")
+        console.print(f"[dim]Auth mode: {auth_mode}[/dim]")
+        console.print()
+
+        # Define probe configurations: (record_count, offset, label)
+        probes = [
+            (10, 0, "Page 1 (count=10, offset=0)"),
+            (10, 10, "Page 2 (count=10, offset=10)"),
+            (10, 20, "Page 3 (count=10, offset=20)"),
+            (25, 0, "Wide page 1 (count=25, offset=0)"),
+            (50, 0, "Full page (count=50, offset=0)"),
+        ]
+
+        probe_results: list[dict] = []
+
+        for record_count, offset, label in probes:
+            console.print(f"  [bold]{label}[/bold]")
+            try:
+                result = provider.search(query, limit=record_count, offset=offset)
+                items = result.items if hasattr(result, "items") else result
+                spns = [getattr(it, "supplier_pn", "") for it in items]
+                mpns = [getattr(it, "mpn", "") for it in items]
+                total = result.total_available if hasattr(result, "total_available") else None
+
+                console.print(f"    returned: {len(items)} items")
+                if total:
+                    console.print(f"    total_available: {total}")
+                console.print(f"    supplier PNs: {spns[:8]}{'...' if len(spns) > 8 else ''}")
+
+                probe_results.append({
+                    "label": label,
+                    "count": record_count,
+                    "offset": offset,
+                    "items": len(items),
+                    "total": total,
+                    "spns": set(spns),
+                    "mpns": set(mpns),
+                })
+
+            except Exception as e:
+                console.print(f"    [red]FAILED: {e}[/red]")
+                probe_results.append({
+                    "label": label, "count": record_count, "offset": offset,
+                    "items": 0, "total": None, "spns": set(), "mpns": set(),
+                    "error": str(e),
+                })
+
+        # Overlap analysis
+        console.print(f"\n[bold]Overlap analysis:[/bold]")
+
+        if len(probe_results) >= 2:
+            page1 = probe_results[0]
+            page2 = probe_results[1]
+            if page1["spns"] and page2["spns"]:
+                overlap = page1["spns"] & page2["spns"]
+                p2_unique = page2["spns"] - page1["spns"]
+                console.print(f"  Page 1 vs Page 2 overlap: {len(overlap)}/{len(page2['spns'])} items are duplicates")
+                console.print(f"  Page 2 unique items: {len(p2_unique)}")
+
+        if len(probe_results) >= 3:
+            page1 = probe_results[0]
+            page3 = probe_results[2]
+            if page1["spns"] and page3["spns"]:
+                overlap = page1["spns"] & page3["spns"]
+                console.print(f"  Page 1 vs Page 3 overlap: {len(overlap)}/{len(page3['spns'])} items are duplicates")
+
+        if len(probe_results) >= 4:
+            page1_10 = probe_results[0]
+            page1_25 = probe_results[3]
+            if page1_10["spns"] and page1_25["spns"]:
+                extra = page1_25["spns"] - page1_10["spns"]
+                console.print(f"  count=25 vs count=10: {len(extra)} additional unique items from larger page")
+
+        if len(probe_results) >= 5:
+            page1_10 = probe_results[0]
+            page1_50 = probe_results[4]
+            if page1_10["spns"] and page1_50["spns"]:
+                extra = page1_50["spns"] - page1_10["spns"]
+                console.print(f"  count=50 vs count=10: {len(extra)} additional unique items from larger page")
+
+        # Verdict
+        console.print(f"\n[bold]Verdict:[/bold]")
+        if len(probe_results) >= 2 and probe_results[0]["spns"] and probe_results[1]["spns"]:
+            overlap = probe_results[0]["spns"] & probe_results[1]["spns"]
+            overlap_pct = len(overlap) / max(len(probe_results[1]["spns"]), 1) * 100
+
+            if overlap_pct > 80:
+                console.print(f"  [red]Native offset pagination: DEGRADED[/red]")
+                console.print(f"  [dim]{overlap_pct:.0f}% overlap between page 1 and page 2[/dim]")
+                console.print(f"  [dim]RecordStartPosition appears to be ignored by this provider.[/dim]")
+                console.print(f"  [green]Workaround: ff sup expand . (sharded search)[/green]")
+            elif overlap_pct > 30:
+                console.print(f"  [yellow]Native offset pagination: PARTIALLY WORKING[/yellow]")
+                console.print(f"  [dim]{overlap_pct:.0f}% overlap — some unique items on page 2, but significant duplication.[/dim]")
+            else:
+                console.print(f"  [green]Native offset pagination: WORKING[/green]")
+                console.print(f"  [dim]{overlap_pct:.0f}% overlap — pages return mostly unique items.[/dim]")
+        else:
+            console.print(f"  [yellow]Could not determine pagination status (insufficient probe data).[/yellow]")
+
+    # -------------------------------------------------------------------
     # Subcommand aliases (M8.7 + M9.3) — hidden short forms for human use
     # -------------------------------------------------------------------
     supplier_app.command("s", hidden=True)(supplier_search_cmd)
@@ -1587,6 +2197,9 @@ def register_supplier_commands(supplier_app: typer.Typer, lib_app: typer.Typer) 
     supplier_app.command("n", hidden=True)(supplier_next_cmd)
     supplier_app.command("p", hidden=True)(supplier_prev_cmd)
     supplier_app.command("pg", hidden=True)(supplier_page_cmd)
+
+    # Expand alias (M9.3c)
+    supplier_app.command("ex", hidden=True)(supplier_expand_cmd)
 
     # Session sub-app already registered as "session"; add "sess" alias
     supplier_app.add_typer(session_app, name="sess", hidden=True)

@@ -251,7 +251,9 @@ class DigiKeyProvider(SupplierProvider):
             if e.status_code == 404:
                 if debug:
                     print("[debug] digikey 404: falling back to keyword search")
-                results = self.search(mpn)
+                search_result = self.search(mpn)
+                # search() returns SupplierSearchPage, unwrap .items
+                results = search_result.items if hasattr(search_result, "items") else search_result
                 if manufacturer and results:
                     filtered = [r for r in results if _mfr_match(r.manufacturer, manufacturer)]
                     return filtered[0] if filtered else results[0]
