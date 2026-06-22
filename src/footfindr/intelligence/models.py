@@ -245,6 +245,9 @@ class PackageEvidence:
     reject_reasons: dict[str, int] = field(default_factory=dict)
     first_raw_mpns: list[str] = field(default_factory=list)
     query_strings: list[str] = field(default_factory=list)
+    # M9.5: three-bucket viability model
+    unverified_count: int = 0
+    definitive_reject_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -264,6 +267,8 @@ class PackageEvidence:
             "reject_reasons": self.reject_reasons,
             "first_raw_mpns": self.first_raw_mpns,
             "query_strings": self.query_strings,
+            "unverified_count": self.unverified_count,
+            "definitive_reject_count": self.definitive_reject_count,
         }
 
     @classmethod
@@ -285,6 +290,8 @@ class PackageEvidence:
             reject_reasons=d.get("reject_reasons", {}),
             first_raw_mpns=d.get("first_raw_mpns", []),
             query_strings=d.get("query_strings", []),
+            unverified_count=d.get("unverified_count", 0),
+            definitive_reject_count=d.get("definitive_reject_count", 0),
         )
 
 

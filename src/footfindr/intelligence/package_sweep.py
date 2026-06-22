@@ -348,7 +348,117 @@ def _try_live_query(
 
 
 # ---------------------------------------------------------------------------
-# Evidence building with per-result classification
+# Capacitance parsing cascade (M9.5)
+# ---------------------------------------------------------------------------
+
+# EIA capacitance code pattern: 3-digit code where first 2 digits are
+# significand and third is exponent (number of zeros in picofarads).
+# E.g., 475 = 47 × 10^5 pF = 4.7µF,  104 = 10 × 10^4 pF = 100nF
+_EIA_CAP_CODE = re.compile(r"(\d)(\d)(\d)")
+
+# Common MLCC MPN patterns that contain EIA capacitance codes.
+# Known positions by manufacturer:
+#   Murata GRM:  GRM188R61C475KA73  →  position [12:15] = "475"
+#   Samsung CL:  CL10B104KB8NNNC    →  position [5:8]   = "104"
+#   TDK C:       C1608X5R1E104K080  →  position [11:14]  = "104"
+#   Yageo CC:    CC0402KRX7R7BB104  →  position [14:17]  = "104"
+# Rather than hard-coding positions, we search for the pattern.
+_MPN_CAP_SEARCH = re.compile(
+    r"(?:^.{4,}?)"           # skip at least 4 chars of prefix
+    r"(\d{3})"               # 3-digit EIA code
+    r"(?=[A-Z])",            # followed by a letter (capacitor tolerance/packaging)
+    re.IGNORECASE,
+)
+
+
+def _parse_supplier_attribute_capacitance(part) -> float | None:
+    """Stage 1: Parse capacitance from structured supplier attribute."""
+    from footfindr.core.units import parse_capacitance
+
+    # Direct attribute
+    cap_attr = getattr(part, "capacitance", None)
+    if cap_attr is not None:
+        if isinstance(cap_attr, (int, float)):
+            return float(cap_attr)
+        if isinstance(cap_attr, str) and cap_attr.strip():
+            return parse_capacitance(cap_attr)
+
+    # Parameters dict
+    params = getattr(part, "parameters", None)
+    if isinstance(params, dict):
+        for key in ("capacitance", "Capacitance", "cap", "Cap"):
+            val = params.get(key)
+            if val is not None:
+                if isinstance(val, (int, float)):
+                    return float(val)
+                if isinstance(val, str) and val.strip():
+                    return parse_capacitance(val)
+
+    return None
+
+
+def _parse_eia_capacitance_from_mpn(mpn: str) -> float | None:
+    """Stage 3: Extract EIA capacitance code from MPN.
+
+    EIA code: 3-digit code where first 2 digits = significand,
+    third digit = exponent (number of trailing zeros in pF).
+    E.g., 475 = 47 × 10^5 pF = 4.7µF
+
+    Returns value in Farads or None.
+    """
+    if not mpn or len(mpn) < 7:
+        return None
+
+    m = _MPN_CAP_SEARCH.search(mpn)
+    if not m:
+        return None
+
+    code = m.group(1)
+    sig1, sig2, exp = int(code[0]), int(code[1]), int(code[2])
+    significand = sig1 * 10 + sig2
+    if significand == 0:
+        return None
+
+    # Result in picofarads, then convert to farads
+    pf = significand * (10 ** exp)
+    farads = pf * 1e-12
+
+    # Sanity check: capacitors range from ~0.1pF to ~10mF
+    if farads < 0.1e-12 or farads > 10e-3:
+        return None
+
+    return farads
+
+
+def parse_capacitance_cascade(part) -> tuple[float | None, str]:
+    """Three-stage capacitance parsing cascade.
+
+    Returns:
+        (capacitance_in_farads, source_name)
+        source_name is one of: "supplier_attribute", "description", "eia_mpn", "none"
+    """
+    # Stage 1: Supplier attribute
+    cap = _parse_supplier_attribute_capacitance(part)
+    if cap is not None:
+        return cap, "supplier_attribute"
+
+    # Stage 2: Description regex
+    desc = getattr(part, "description", "") or ""
+    cap = normalize_capacitance(desc)
+    if cap is not None:
+        return cap, "description"
+
+    # Stage 3: EIA code from MPN
+    mpn = getattr(part, "mpn", "") or ""
+    cap = _parse_eia_capacitance_from_mpn(mpn)
+    if cap is not None:
+        return cap, "eia_mpn"
+
+    return None, "none"
+
+
+# ---------------------------------------------------------------------------
+# Evidence building with three-bucket classification (M9.5)
 # ---------------------------------------------------------------------------
 
 def _build_package_evidence(
@@ -358,7 +468,16 @@ def _build_package_evidence(
     target_package: str,
     query: str,
 ) -> PackageEvidence:
-    """Classify every result and build detailed evidence."""
+    """Classify every result into three buckets and build detailed evidence.
+
+    Buckets:
+        verified_viable:    All parseable attributes match requirements.
+        definitive_reject:  At least one attribute parsed AND mismatches.
+        unverified:         Insufficient parsed data to determine viability.
+
+    Only verified_viable parts count toward viable_count, active_count,
+    in_stock_count, manufacturer_count, and pricing.
+    """
     reject_reasons: dict[str, int] = {}
     viable: list[Any] = []
     active: list[Any] = []
@@ -370,6 +489,8 @@ def _build_package_evidence(
     parsed_count = 0
     fields_present = 0
     fields_total = 0
+    unverified_count = 0
+    definitive_reject_count = 0
 
     for part in results:
         mpn = getattr(part, "mpn", "") or ""
@@ -380,7 +501,10 @@ def _build_package_evidence(
         desc = getattr(part, "description", "") or ""
         part_pkg_raw = getattr(part, "package", "") or ""
         part_pkg = normalize_package(part_pkg_raw) or normalize_package(desc) or ""
-        part_cap = normalize_capacitance(desc)
+
+        # Capacitance cascade
+        part_cap, cap_source = parse_capacitance_cascade(part)
+
         part_voltage = normalize_voltage(desc)
         lifecycle = (getattr(part, "lifecycle", "") or "").strip().lower()
         stock = getattr(part, "stock", 0) or 0
@@ -398,56 +522,81 @@ def _build_package_evidence(
         lc_key = lifecycle if lifecycle else "unknown"
         lifecycle_dist[lc_key] = lifecycle_dist.get(lc_key, 0) + 1
 
-        # --- Filter pipeline ---
         parsed_count += 1
 
-        # Package match
+        # --- Three-bucket classification ---
+        bucket = "verified_viable"
+        bucket_reject: list[str] = []
+        bucket_unverified: list[str] = []
+
+        # Check 1: Package match
         if part_pkg and part_pkg != target_package:
-            # Also check raw against target
             if target_package.lower() not in part_pkg_raw.lower() and target_package not in desc:
-                reject_reasons["wrong_package"] = reject_reasons.get("wrong_package", 0) + 1
-                continue
+                bucket = "definitive_reject"
+                bucket_reject.append("wrong_package")
 
-        # Capacitance match
-        if cap_farads and part_cap and not _cap_compatible(cap_farads, part_cap):
-            reject_reasons["capacitance_mismatch"] = reject_reasons.get("capacitance_mismatch", 0) + 1
-            continue
+        # Check 2: Capacitance match
+        if bucket != "definitive_reject":
+            if cap_farads is not None:
+                if part_cap is not None:
+                    if not _cap_compatible(cap_farads, part_cap):
+                        bucket = "definitive_reject"
+                        bucket_reject.append("capacitance_mismatch")
+                else:
+                    # Capacitance unknown → unverified (NOT viable)
+                    if bucket == "verified_viable":
+                        bucket = "unverified"
+                    bucket_unverified.append(f"capacitance_unknown (source={cap_source})")
 
-        # Voltage check: V_rated >= V_required
-        if voltage_v:
-            if part_voltage is not None and part_voltage < voltage_v:
-                reject_reasons["low_voltage"] = reject_reasons.get("low_voltage", 0) + 1
-                continue
+        # Check 3: Voltage match
+        if bucket not in ("definitive_reject",):
+            if voltage_v is not None:
+                if part_voltage is not None:
+                    if part_voltage < voltage_v:
+                        bucket = "definitive_reject"
+                        bucket_reject.append("low_voltage")
+                else:
+                    # Voltage unknown but we need it → unverified
+                    if bucket == "verified_viable":
+                        bucket = "unverified"
+                    bucket_unverified.append("voltage_unknown")
 
-        # Lifecycle check
-        if lifecycle in ("obsolete", "discontinued", "eol"):
-            reject_reasons["lifecycle"] = reject_reasons.get("lifecycle", 0) + 1
-            continue
+        # Check 4: Lifecycle
+        if bucket not in ("definitive_reject",):
+            if lifecycle in ("obsolete", "discontinued", "eol"):
+                bucket = "definitive_reject"
+                bucket_reject.append("lifecycle")
 
-        # Parse failure tracking
-        if part_cap is None and cap_farads:
-            reject_reasons["parse_failed"] = reject_reasons.get("parse_failed", 0) + 1
-            # Keep the result! Don't discard for parse failure.
-            # But note it in reject_reasons for debug.
+        # --- Record into appropriate bucket ---
+        if bucket == "definitive_reject":
+            definitive_reject_count += 1
+            for reason in bucket_reject:
+                reject_reasons[reason] = reject_reasons.get(reason, 0) + 1
 
-        # Viable!
-        viable.append(part)
+        elif bucket == "unverified":
+            unverified_count += 1
+            reject_reasons["unverified"] = reject_reasons.get("unverified", 0) + 1
+            # Retained for debug/evidence but NOT counted as viable
 
-        if lifecycle in ("active", "new", "") or lifecycle is None:
-            active.append(part)
+        else:
+            # verified_viable
+            viable.append(part)
 
-        if stock > 0:
-            in_stock.append(part)
+            if lifecycle in ("active", "new", "") or lifecycle is None:
+                active.append(part)
 
-        if mfr:
-            manufacturers[mfr] = manufacturers.get(mfr, 0) + 1
+            if stock > 0:
+                in_stock.append(part)
 
-        # Price
-        price = _get_unit_price(part)
-        if price is not None and price > 0:
-            prices.append(price)
+            if mfr:
+                manufacturers[mfr] = manufacturers.get(mfr, 0) + 1
 
-    # Manufacturer entropy
+            # Price
+            price = _get_unit_price(part)
+            if price is not None and price > 0:
+                prices.append(price)
+
+    # Manufacturer entropy (viable set only)
     mfr_entropy = 0.0
     total_mfr_parts = sum(manufacturers.values())
     if total_mfr_parts > 0 and len(manufacturers) > 1:
@@ -456,7 +605,7 @@ def _build_package_evidence(
             if p > 0:
                 mfr_entropy -= p * math.log(p)
 
-    # Price quantiles
+    # Price quantiles (viable set only)
     price_quantiles: dict[str, float] = {}
     if prices:
         prices.sort()
@@ -487,6 +636,8 @@ def _build_package_evidence(
         reject_reasons=reject_reasons,
         first_raw_mpns=first_mpns,
         query_strings=[query],
+        unverified_count=unverified_count,
+        definitive_reject_count=definitive_reject_count,
     )
 
 

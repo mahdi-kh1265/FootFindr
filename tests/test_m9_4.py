@@ -210,8 +210,8 @@ class TestSoftmaxClassifier:
         total = sum(result.role_probabilities.values())
         assert abs(total - 1.0) < 0.01, f"Probabilities should sum to 1.0, got {total}"
 
-    def test_rail_decoupling_high_confidence(self):
-        """Cap with ground + rail should classify as rail_decoupling."""
+    def test_rail_input_decoupling_high_confidence(self):
+        """Cap with ground + rail should classify as rail_input_decoupling."""
         from footfindr.intelligence.cap_classifier import classify_capacitor
         from footfindr.intelligence.models import NetConnection, RailInfo
 
@@ -223,9 +223,9 @@ class TestSoftmaxClassifier:
 
         result = classify_capacitor("C1", "100nF", connections, rails, pin_completeness=1.0)
 
-        assert result.role == "rail_decoupling", f"Expected rail_decoupling, got {result.role}"
-        assert result.role_probabilities["rail_decoupling"] > 0.5, (
-            f"P(rail_decoupling) should be > 0.5, got {result.role_probabilities['rail_decoupling']}"
+        assert result.role == "rail_input_decoupling", f"Expected rail_input_decoupling, got {result.role}"
+        assert result.role_probabilities["rail_input_decoupling"] > 0.5, (
+            f"P(rail_input_decoupling) should be > 0.5, got {result.role_probabilities['rail_input_decoupling']}"
         )
 
     def test_dc_block_classification(self):
@@ -285,7 +285,7 @@ class TestSoftmaxClassifier:
         from footfindr.intelligence.cap_classifier import classify_capacitor
 
         result = classify_capacitor("C1", "100nF", [], [], pin_completeness=1.0)
-        assert result.model_version == "softmax_cap_v1"
+        assert result.model_version == "softmax_cap_v2"
 
 
 # ===========================================================================
@@ -474,7 +474,7 @@ class TestPackageUtility:
         ctx = {
             "target_capacitance_f": 4.7e-6,
             "required_voltage_v": 10.0,
-            "role": "rail_decoupling",
+            "role": "rail_input_decoupling",
             "role_confidence": 0.8,
             "pin_completeness": 1.0,
         }
@@ -510,7 +510,7 @@ class TestPackageUtility:
         ctx = {
             "target_capacitance_f": 10e-6,  # 10uF
             "required_voltage_v": 25.0,
-            "role": "rail_decoupling",
+            "role": "rail_input_decoupling",
             "role_confidence": 0.8,
             "pin_completeness": 1.0,
         }
@@ -627,7 +627,7 @@ class TestRankStability:
             ),
         ]
 
-        result = analyze_rank_stability(scores, {"role": "unknown", "role_confidence": 0.5})
+        result = analyze_rank_stability(scores, {"role": "unknown_review", "role_confidence": 0.5})
         assert result.decision == "no_recommendation"
         assert "no viable" in result.decision_reason.lower()
 
@@ -668,7 +668,7 @@ class TestRankStability:
         ctx = {
             "target_capacitance_f": 100e-9,
             "required_voltage_v": 10.0,
-            "role": "rail_decoupling",
+            "role": "rail_input_decoupling",
             "role_confidence": 0.8,
             "pin_completeness": 1.0,
         }
@@ -710,7 +710,7 @@ class TestRankStability:
 
         ctx = {
             "target_capacitance_f": 4.7e-6,
-            "role": "rail_decoupling",
+            "role": "rail_input_decoupling",
             "role_confidence": 0.7,
             "pin_completeness": 1.0,
         }
@@ -830,9 +830,9 @@ class TestModels:
 
         record = SuggestionRecord(
             ref="C1",
-            role="rail_decoupling",
+            role="rail_input_decoupling",
             role_confidence=0.85,
-            role_probabilities={"rail_decoupling": 0.85, "unknown": 0.15},
+            role_probabilities={"rail_input_decoupling": 0.85, "unknown_review": 0.15},
             decision="recommend",
             decision_reason="Test reason",
             pin_completeness=1.0,
@@ -851,7 +851,7 @@ class TestModels:
         restored = SuggestionRecord.from_dict(d)
 
         assert restored.ref == "C1"
-        assert restored.role == "rail_decoupling"
+        assert restored.role == "rail_input_decoupling"
         assert restored.decision == "recommend"
         assert restored.rank_stability is not None
         assert restored.rank_stability.n_samples == 200
@@ -876,3 +876,346 @@ class TestModels:
         assert restored.package == "0603"
         assert restored.viable_count == 10
         assert restored.reject_reasons["wrong_package"] == 3
+
+
+    def test_package_evidence_three_bucket_roundtrip(self):
+        """M9.5: unverified/reject counts survive serialization."""
+        from footfindr.intelligence.models import PackageEvidence
+
+        ev = PackageEvidence(
+            package="0603",
+            raw_count=20,
+            viable_count=5,
+            unverified_count=8,
+            definitive_reject_count=7,
+        )
+        d = ev.to_dict()
+        restored = PackageEvidence.from_dict(d)
+        assert restored.unverified_count == 8
+        assert restored.definitive_reject_count == 7
+
+
+# ===========================================================================
+# Part 7: M9.5 — Regulator Schematic Tests
+# ===========================================================================
+
+REGULATOR_SCHEMATIC = EXAMPLES_DIR / "test_board_with_regulator.kicad_sch"
+
+
+class TestRegulatorSchematic:
+    """Test the new regulator test schematic with U1 VREG (IN/OUT/GND/SET)."""
+
+    def test_regulator_schematic_exists(self):
+        assert REGULATOR_SCHEMATIC.exists(), f"Not found: {REGULATOR_SCHEMATIC}"
+
+    def test_c2_connects_to_u1_out_net_and_gnd(self):
+        """C2 pin 1 should connect to Net-(U1-OUT), pin 2 to GND."""
+        from footfindr.intelligence.net_graph import get_connectivity_provider
+
+        provider = get_connectivity_provider()
+        graph = provider.build_net_graph(REGULATOR_SCHEMATIC)
+        connections = graph.get_connections("C2")
+
+        assert len(connections) == 2, (
+            f"C2 should have 2 connections, got {len(connections)}: "
+            f"{[(c.pin, c.net) for c in connections]}"
+        )
+
+        nets = {c.net for c in connections}
+        assert "GND" in nets, f"C2 should connect to GND, got {nets}"
+
+        non_gnd = nets - {"GND"}
+        assert len(non_gnd) == 1
+        synth_net = non_gnd.pop()
+        assert "U1" in synth_net and "OUT" in synth_net, (
+            f"Synthesized net should reference U1-OUT, got '{synth_net}'"
+        )
+
+    def test_c3_connects_to_u1_set_net_and_gnd(self):
+        """C3 pin 1 should connect to Net-(U1-SET), pin 2 to GND."""
+        from footfindr.intelligence.net_graph import get_connectivity_provider
+
+        provider = get_connectivity_provider()
+        graph = provider.build_net_graph(REGULATOR_SCHEMATIC)
+        connections = graph.get_connections("C3")
+
+        assert len(connections) == 2
+        nets = {c.net for c in connections}
+        assert "GND" in nets
+
+        non_gnd = nets - {"GND"}
+        synth_net = non_gnd.pop()
+        assert "U1" in synth_net and "SET" in synth_net, (
+            f"Synthesized net should reference U1-SET, got '{synth_net}'"
+        )
+
+    def test_c1_connects_to_5v_and_gnd(self):
+        """C1 should connect to +5V and GND."""
+        from footfindr.intelligence.net_graph import get_connectivity_provider
+
+        provider = get_connectivity_provider()
+        graph = provider.build_net_graph(REGULATOR_SCHEMATIC)
+        nets = {c.net for c in graph.get_connections("C1")}
+        assert "+5V" in nets and "GND" in nets
+
+    def test_ic_pin_name_preferred_over_passive(self):
+        """Net name should use IC pin (U1.OUT) not passive pin (C2.1)."""
+        from footfindr.intelligence.net_graph import get_connectivity_provider
+
+        provider = get_connectivity_provider()
+        graph = provider.build_net_graph(REGULATOR_SCHEMATIC)
+        non_gnd = [c for c in graph.get_connections("C2") if c.net != "GND"]
+        assert len(non_gnd) == 1
+        assert non_gnd[0].net == "Net-(U1-OUT)"
+
+    def test_no_n_dollar_in_default_output(self):
+        """Net names should not contain N$0/N$1 patterns."""
+        from footfindr.intelligence.net_graph import get_connectivity_provider
+
+        provider = get_connectivity_provider()
+        graph = provider.build_net_graph(REGULATOR_SCHEMATIC)
+        for ref, conns in graph.connections.items():
+            for conn in conns:
+                assert not conn.net.startswith("N$"), (
+                    f"{ref}.{conn.pin} has raw name '{conn.net}'"
+                )
+
+    def test_u1_resolves_all_four_pins(self):
+        """U1 should have 4 pins resolved."""
+        from footfindr.intelligence.net_graph import get_connectivity_provider
+
+        provider = get_connectivity_provider()
+        graph = provider.build_net_graph(REGULATOR_SCHEMATIC)
+        assert len(graph.get_connections("U1")) == 4
+
+
+# ===========================================================================
+# Part 8: M9.5 — Expanded Role Classification
+# ===========================================================================
+
+class TestExpandedRoles:
+    """Test the expanded 10-role classification system."""
+
+    def test_all_new_roles_in_probabilities(self):
+        from footfindr.intelligence.cap_classifier import classify_capacitor, ROLES
+        from footfindr.intelligence.models import NetConnection
+
+        connections = [
+            NetConnection(ref="C1", pin="1", net="+5V", net_type="power"),
+            NetConnection(ref="C1", pin="2", net="GND", net_type="ground"),
+        ]
+        result = classify_capacitor("C1", "100nF", connections, [], pin_completeness=1.0)
+        assert len(result.role_probabilities) == 10
+        for role in ROLES:
+            assert role in result.role_probabilities
+
+    def test_model_version_v2(self):
+        from footfindr.intelligence.cap_classifier import classify_capacitor
+        result = classify_capacitor("C1", "100nF", [], [], pin_completeness=1.0)
+        assert result.model_version == "softmax_cap_v2"
+
+    def test_rail_input_decoupling_high_confidence(self):
+        """Cap with ground + rail should classify as rail_input_decoupling."""
+        from footfindr.intelligence.cap_classifier import classify_capacitor
+        from footfindr.intelligence.models import NetConnection, RailInfo
+
+        connections = [
+            NetConnection(ref="C1", pin="1", net="+5V", net_type="power"),
+            NetConnection(ref="C1", pin="2", net="GND", net_type="ground"),
+        ]
+        rails = [RailInfo(net="+5V", voltage=5.0, confidence=0.95, source="net-name")]
+
+        result = classify_capacitor("C1", "100nF", connections, rails, pin_completeness=1.0)
+
+        assert result.role == "rail_input_decoupling", f"Expected rail_input_decoupling, got {result.role}"
+        assert result.role_probabilities["rail_input_decoupling"] > 0.5, (
+            f"P(rail_input_decoupling) should be > 0.5, got {result.role_probabilities['rail_input_decoupling']}"
+        )
+
+    def test_c2_output_cap_role_not_input_decoupling(self):
+        from footfindr.intelligence.cap_classifier import classify_capacitor
+        from footfindr.intelligence.models import NetConnection
+
+        connections = [
+            NetConnection(ref="C2", pin="1", net="Net-(U1-OUT)", net_type="signal"),
+            NetConnection(ref="C2", pin="2", net="GND", net_type="ground"),
+        ]
+        result = classify_capacitor("C2", "10uF", connections, [], pin_completeness=1.0)
+        assert result.role != "rail_input_decoupling"
+
+    def test_c3_set_pin_role_not_input_decoupling(self):
+        from footfindr.intelligence.cap_classifier import classify_capacitor
+        from footfindr.intelligence.models import NetConnection
+
+        connections = [
+            NetConnection(ref="C3", pin="1", net="Net-(U1-SET)", net_type="signal"),
+            NetConnection(ref="C3", pin="2", net="GND", net_type="ground"),
+        ]
+        result = classify_capacitor("C3", "100nF", connections, [], pin_completeness=1.0)
+        assert result.role != "rail_input_decoupling"
+
+    def test_softmax_probabilities_sum_to_one_v2(self):
+        from footfindr.intelligence.cap_classifier import classify_capacitor
+        from footfindr.intelligence.models import NetConnection
+
+        connections = [
+            NetConnection(ref="C1", pin="1", net="Net-(U1-OUT)", net_type="signal"),
+            NetConnection(ref="C1", pin="2", net="GND", net_type="ground"),
+        ]
+        result = classify_capacitor("C1", "10uF", connections, [], pin_completeness=1.0)
+        total = sum(result.role_probabilities.values())
+        assert abs(total - 1.0) < 0.01
+
+
+# ===========================================================================
+# Part 9: M9.5 — Three-Bucket Viability Model
+# ===========================================================================
+
+class TestThreeBucketViability:
+    """Test the three-bucket viability classification."""
+
+    def test_parse_failed_not_viable(self):
+        from footfindr.intelligence.package_sweep import _build_package_evidence
+
+        parts = [MockSupplierPart(
+            mpn="UNKNOWN123", description="capacitor 0603",
+            stock=1000, lifecycle="active", package="0603",
+        )]
+        ev = _build_package_evidence(parts, 4.7e-6, None, "0603", "test")
+        assert ev.viable_count == 0
+        assert ev.unverified_count == 1
+
+    def test_verified_viable_counted(self):
+        from footfindr.intelligence.package_sweep import _build_package_evidence
+
+        parts = [MockSupplierPart(
+            mpn="GRM188R61C475K", description="4.7uF 16V 0603 capacitor",
+            stock=5000, lifecycle="active", package="0603",
+        )]
+        ev = _build_package_evidence(parts, 4.7e-6, None, "0603", "test")
+        assert ev.viable_count == 1
+        assert ev.unverified_count == 0
+
+    def test_definitive_reject_not_viable(self):
+        from footfindr.intelligence.package_sweep import _build_package_evidence
+
+        parts = [MockSupplierPart(
+            mpn="TEST1", description="100pF 16V 0603 capacitor",
+            stock=5000, lifecycle="active", package="0603",
+        )]
+        ev = _build_package_evidence(parts, 4.7e-6, None, "0603", "test")
+        assert ev.viable_count == 0
+        assert ev.definitive_reject_count == 1
+
+    def test_unverified_only_package_insufficient(self):
+        from footfindr.intelligence.package_sweep import _build_package_evidence
+        from footfindr.intelligence.bayesian_model import assess_feasibility
+
+        parts = [MockSupplierPart(
+            mpn=f"UNKNOWN{i}", description="capacitor 0603",
+            stock=1000, lifecycle="active", package="0603",
+        ) for i in range(10)]
+        ev = _build_package_evidence(parts, 4.7e-6, None, "0603", "test")
+        assert ev.viable_count == 0
+        assert ev.unverified_count == 10
+        f = assess_feasibility("0603", ev.parsed_count, ev.viable_count)
+        assert f.status == "insufficient_evidence"
+
+    def test_mixed_bucket_counts(self):
+        from footfindr.intelligence.package_sweep import _build_package_evidence
+
+        parts = [
+            MockSupplierPart(mpn="GOOD1", description="4.7uF 16V 0603",
+                             stock=100, lifecycle="active", package="0603"),
+            MockSupplierPart(mpn="BAD1", description="100pF 16V 0603",
+                             stock=200, lifecycle="active", package="0603"),
+            MockSupplierPart(mpn="UNKN1", description="0603 capacitor",
+                             stock=300, lifecycle="active", package="0603"),
+            MockSupplierPart(mpn="OLD1", description="4.7uF 16V 0603",
+                             stock=50, lifecycle="obsolete", package="0603"),
+        ]
+        ev = _build_package_evidence(parts, 4.7e-6, None, "0603", "test")
+        assert ev.raw_count == 4
+        assert ev.viable_count == 1
+        assert ev.definitive_reject_count == 2
+        assert ev.unverified_count == 1
+
+
+# ===========================================================================
+# Part 10: M9.5 — Capacitance Parsing Cascade
+# ===========================================================================
+
+class TestCapacitanceCascade:
+    """Test the three-stage capacitance parsing cascade."""
+
+    def test_supplier_attribute_first(self):
+        from footfindr.intelligence.package_sweep import parse_capacitance_cascade
+        part = MockSupplierPart(mpn="TEST", description="100pF capacitor")
+        part.capacitance = "4.7uF"  # type: ignore[attr-defined]
+        cap, source = parse_capacitance_cascade(part)
+        assert source == "supplier_attribute"
+        assert abs(cap - 4.7e-6) < 1e-9
+
+    def test_description_fallback(self):
+        from footfindr.intelligence.package_sweep import parse_capacitance_cascade
+        part = MockSupplierPart(mpn="GENERIC123", description="4.7 µF 16V X5R MLCC")
+        cap, source = parse_capacitance_cascade(part)
+        assert source == "description"
+
+    def test_eia_code_from_mpn(self):
+        from footfindr.intelligence.package_sweep import parse_capacitance_cascade
+        part = MockSupplierPart(mpn="GRM188R61C475KA73", description="capacitor MLCC")
+        cap, source = parse_capacitance_cascade(part)
+        assert source == "eia_mpn"
+        assert abs(cap - 4.7e-6) < 1e-9
+
+    def test_all_fail_returns_none(self):
+        from footfindr.intelligence.package_sweep import parse_capacitance_cascade
+        part = MockSupplierPart(mpn="XYZ", description="electronic component")
+        cap, source = parse_capacitance_cascade(part)
+        assert cap is None
+        assert source == "none"
+
+    def test_eia_code_common_values(self):
+        from footfindr.intelligence.package_sweep import _parse_eia_capacitance_from_mpn
+        assert abs(_parse_eia_capacitance_from_mpn("CL10B104KB8NNNC") - 100e-9) < 1e-12
+        assert abs(_parse_eia_capacitance_from_mpn("GRM188R61C475KA73") - 4.7e-6) < 1e-9
+
+
+# ===========================================================================
+# Part 11: M9.5 — Net Name Synthesis Unit Tests
+# ===========================================================================
+
+class TestNetNameSynthesis:
+    """Test the net name synthesis logic in isolation."""
+
+    def test_ic_pin_preferred(self):
+        from footfindr.intelligence.net_graph import KiCadSexprConnectivityProvider, _GNode
+        nodes = [
+            _GNode(x=0, y=0, node_type="pin", ref="U1", pin_number="2",
+                   pin_name="OUT", is_ic_pin=True),
+            _GNode(x=0, y=0, node_type="pin", ref="C2", pin_number="1",
+                   pin_name="", is_ic_pin=False),
+        ]
+        assert KiCadSexprConnectivityProvider._synthesize_net_name(nodes) == "Net-(U1-OUT)"
+
+    def test_passive_fallback(self):
+        from footfindr.intelligence.net_graph import KiCadSexprConnectivityProvider, _GNode
+        nodes = [
+            _GNode(x=0, y=0, node_type="pin", ref="C2", pin_number="1",
+                   pin_name="", is_ic_pin=False),
+            _GNode(x=0, y=0, node_type="pin", ref="C3", pin_number="1",
+                   pin_name="", is_ic_pin=False),
+        ]
+        assert KiCadSexprConnectivityProvider._synthesize_net_name(nodes) == "Net-(C2-Pad1)"
+
+    def test_empty_nodes_returns_none(self):
+        from footfindr.intelligence.net_graph import KiCadSexprConnectivityProvider
+        assert KiCadSexprConnectivityProvider._synthesize_net_name([]) is None
+
+    def test_is_ic_lib_id(self):
+        from footfindr.intelligence.net_graph import KiCadSexprConnectivityProvider
+        assert KiCadSexprConnectivityProvider._is_ic_lib_id("footfindr:VREG") is True
+        assert KiCadSexprConnectivityProvider._is_ic_lib_id("Device:C") is False
+        assert KiCadSexprConnectivityProvider._is_ic_lib_id("power:+5V") is False
+        assert KiCadSexprConnectivityProvider._is_ic_lib_id("") is False

@@ -186,6 +186,8 @@ class _GNode:
     node_type: str  # "wire", "pin", "label", "power", "junction"
     ref: str | None = None          # for pins: component ref
     pin_number: str | None = None   # for pins
+    pin_name: str | None = None     # for pins: from lib_symbol (name ...) field
+    is_ic_pin: bool = False         # True if lib_id is NOT Device:*/power:*
     net_name: str | None = None     # for labels / power ports
     label_type: str | None = None   # for labels: "label", "global_label", etc.
     lib_id: str | None = None       # for power ports
@@ -344,7 +346,7 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
                     uf.union(i, wa)
 
         # --- Phase 3: Assign net names per connected component ---
-        # Collect named nodes per component
+        # Collect named nodes per component (from labels and power ports)
         comp_names: dict[int, list[str]] = {}
         for i, nd in enumerate(nodes):
             if nd.net_name:
@@ -352,16 +354,27 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
                 comp_names.setdefault(root_id, []).append(nd.net_name)
 
         # Resolve: unique name wins, conflicts marked
-        comp_net: dict[int, str] = {}
+        comp_net: dict[int, str] = {}       # root_id -> display name
+        comp_internal: dict[int, str] = {}  # root_id -> internal N$X id
+        comp_name_source: dict[int, str] = {}  # root_id -> name_source
         auto_id = 0
         for root_id, names in comp_names.items():
             unique = list(dict.fromkeys(names))  # deduplicate preserving order
             if len(unique) == 1:
                 comp_net[root_id] = unique[0]
+                comp_name_source[root_id] = "label_or_power_port"
             else:
                 # Multiple names — use the first, log conflict
                 comp_net[root_id] = unique[0]
+                comp_name_source[root_id] = "label_or_power_port"
                 logger.debug(f"Net name conflict in component {root_id}: {unique}")
+
+        # Collect pin nodes per connected component for net name synthesis
+        comp_pin_nodes: dict[int, list[_GNode]] = {}
+        for i, nd in enumerate(nodes):
+            if nd.node_type == "pin" and nd.ref:
+                root_id = uf.find(i)
+                comp_pin_nodes.setdefault(root_id, []).append(nd)
 
         # --- Phase 4: Build NetGraph ---
         graph = NetGraph(_expected_pins=expected_pins)
@@ -373,27 +386,49 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
 
             root_id = uf.find(i)
             net_name = comp_net.get(root_id)
+            name_source = comp_name_source.get(root_id, "")
+            internal_id = comp_internal.get(root_id)
+
             if net_name is None:
-                # Generate auto net name
-                net_name = f"N${auto_id}"
-                comp_net[root_id] = net_name
+                # No label/power port — synthesize KiCad-style name
+                internal_id = f"N${auto_id}"
+                comp_internal[root_id] = internal_id
                 auto_id += 1
+
+                # Synthesize from pin context
+                pin_nodes = comp_pin_nodes.get(root_id, [])
+                synthesized = self._synthesize_net_name(pin_nodes)
+                if synthesized:
+                    net_name = synthesized
+                    name_source = "synthesized_from_pin_context"
+                else:
+                    net_name = internal_id
+                    name_source = "auto_generated"
+                comp_net[root_id] = net_name
+                comp_name_source[root_id] = name_source
+            elif internal_id is None:
+                # Named net — assign internal ID for debug
+                internal_id = net_name
+                comp_internal[root_id] = internal_id
 
             net_type = self._classify_net_type(net_name)
             conn = NetConnection(
                 ref=nd.ref,
                 pin=nd.pin_number,
-                pin_name=None,
+                pin_name=nd.pin_name or None,
                 net=net_name,
                 net_type=net_type,
             )
             graph.connections.setdefault(nd.ref, []).append(conn)
             graph.nets.setdefault(net_name, []).append(conn)
 
-            # Debug info
+            # Debug info — always shows both internal and display
             debug_info.setdefault(nd.ref, []).append(
                 f"pin {nd.pin_number}: abs_pos=({nd.x:.2f}, {nd.y:.2f}) "
-                f"-> component {root_id} -> net '{net_name}' ({net_type})"
+                f"-> component {root_id} -> "
+                f"internal: {comp_internal.get(root_id, '?')}, "
+                f"display: {net_name}, "
+                f"source: {name_source}"
             )
 
         graph._debug_info = debug_info
@@ -403,9 +438,9 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
     # Phase 1 extractors
     # ----------------------------------------------------------------
 
-    def _build_lib_pin_map(self, root) -> dict[str, list[tuple[str, float, float]]]:
-        """Build mapping: lib_symbol_name -> [(pin_number, dx, dy), ...]"""
-        lib_pins: dict[str, list[tuple[str, float, float]]] = {}
+    def _build_lib_pin_map(self, root) -> dict[str, list[tuple[str, float, float, str]]]:
+        """Build mapping: lib_symbol_name -> [(pin_number, dx, dy, pin_name), ...]"""
+        lib_pins: dict[str, list[tuple[str, float, float, str]]] = {}
         for child in root.children:
             if child.tag == "lib_symbols":
                 for sym_def in child.children:
@@ -418,7 +453,7 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
         self,
         node,
         symbol_name: str,
-        out: dict[str, list[tuple[str, float, float]]],
+        out: dict[str, list[tuple[str, float, float, str]]],
     ) -> None:
         """Recursively collect pin definitions from lib_symbols.
 
@@ -432,8 +467,9 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
             if child.tag == "pin":
                 pin_num = self._get_pin_number(child)
                 px, py = self._get_pin_at(child)
+                pin_name = self._get_pin_name(child)
                 # Store under the full sub-symbol name
-                out.setdefault(symbol_name, []).append((pin_num, px, py))
+                out.setdefault(symbol_name, []).append((pin_num, px, py, pin_name))
                 # Also store under the top-level lib name (e.g. "Device:C")
                 # by extracting the base: "C_1_1" -> store under parent
             elif child.tag == "symbol":
@@ -449,6 +485,16 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
                 if len(child.children) > 1:
                     return child.children[1].value
         return "?"
+
+    def _get_pin_name(self, pin_node) -> str:
+        """Extract pin name from the (name ...) child of a pin node."""
+        for child in pin_node.children:
+            if child.kind == "list" and child.tag == "name":
+                if len(child.children) > 1:
+                    name = child.children[1].value
+                    # "~" means unnamed/anonymous in KiCad
+                    return name if name != "~" else ""
+        return ""
 
     def _get_pin_at(self, pin_node) -> tuple[float, float]:
         for child in pin_node.children:
@@ -486,7 +532,7 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
     def _extract_placed_pins(
         self,
         root,
-        lib_pins: dict[str, list[tuple[str, float, float]]],
+        lib_pins: dict[str, list[tuple[str, float, float, str]]],
         nodes: list[_GNode],
         expected_pins: dict[str, int],
     ) -> None:
@@ -501,6 +547,24 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
             if not has_lib_id:
                 continue
             self._extract_one_symbol_pins(child, lib_pins, nodes, expected_pins)
+
+    @staticmethod
+    def _is_ic_lib_id(lib_id: str) -> bool:
+        """Return True if a lib_id is NOT a passive device or power symbol.
+
+        IC/connector/active symbols get priority for net name synthesis.
+        """
+        if not lib_id:
+            return False
+        lib_lower = lib_id.lower()
+        # Passive device symbols
+        if lib_lower.startswith("device:"):
+            return False
+        # Power symbols
+        if lib_lower.startswith("power:"):
+            return False
+        # Everything else is considered "active" (IC, regulator, connector, etc.)
+        return True
 
     def _extract_one_symbol_pins(
         self, sym_node, lib_pins, nodes, expected_pins,
@@ -532,13 +596,16 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
             # Skip power symbols (handled separately) and unnamed
             return
 
+        # Determine if this is an IC/active component
+        is_ic = self._is_ic_lib_id(lib_id)
+
         # Look up pin definitions
         pin_defs = self._find_pin_defs(lib_id, lib_pins)
 
         # Record expected pins
         if pin_defs:
             # Deduplicate pin numbers
-            unique_pins = {pn for pn, _, _ in pin_defs}
+            unique_pins = {pn for pn, _, _, _ in pin_defs}
             expected_pins[ref] = len(unique_pins)
         else:
             # Check for pin instances on the placed symbol
@@ -555,7 +622,7 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
             sin_r = math.sin(rot_rad)
 
             seen_pins: set[str] = set()
-            for pin_num, dx, dy in pin_defs:
+            for pin_num, dx, dy, pin_name in pin_defs:
                 if pin_num in seen_pins:
                     continue
                 seen_pins.add(pin_num)
@@ -571,6 +638,7 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
                 nodes.append(_GNode(
                     x=abs_x, y=abs_y, node_type="pin",
                     ref=ref, pin_number=pin_num,
+                    pin_name=pin_name, is_ic_pin=is_ic,
                 ))
         else:
             # No lib pin defs — record pins at symbol center (fallback)
@@ -580,11 +648,12 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
                     nodes.append(_GNode(
                         x=sym_x, y=sym_y, node_type="pin",
                         ref=ref, pin_number=pin_num,
+                        is_ic_pin=is_ic,
                     ))
 
     def _find_pin_defs(
-        self, lib_id: str, lib_pins: dict[str, list[tuple[str, float, float]]],
-    ) -> list[tuple[str, float, float]]:
+        self, lib_id: str, lib_pins: dict[str, list[tuple[str, float, float, str]]],
+    ) -> list[tuple[str, float, float, str]]:
         """Find pin definitions for a lib_id, trying multiple key variants."""
         # Direct match: "Device:C"
         if lib_id in lib_pins:
@@ -652,7 +721,7 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
             pin_defs = self._find_pin_defs(lib_id, lib_pins)
             if pin_defs:
                 # Use first pin's offset
-                _, dx, dy = pin_defs[0]
+                _, dx, dy, _ = pin_defs[0]
                 rot_rad = math.radians(rot)
                 cos_r = math.cos(rot_rad)
                 sin_r = math.sin(rot_rad)
@@ -680,6 +749,44 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
             nodes.append(_GNode(x=x, y=y, node_type="junction"))
 
     # ----------------------------------------------------------------
+    # Net name synthesis
+    # ----------------------------------------------------------------
+
+    @staticmethod
+    def _synthesize_net_name(pin_nodes: list[_GNode]) -> str | None:
+        """Synthesize a KiCad-style net name from pin context.
+
+        Prefers IC/active pin names over passive pin names.
+        Format: ``Net-(RefDes-PinName)``
+
+        Returns None if no useful pin name can be found.
+        """
+        if not pin_nodes:
+            return None
+
+        # Partition into IC pins (named) and passive pins
+        ic_named: list[tuple[str, str]] = []   # (ref, pin_name)
+        passive_named: list[tuple[str, str]] = []  # (ref, pin_number)
+
+        for nd in pin_nodes:
+            if nd.is_ic_pin and nd.pin_name:
+                ic_named.append((nd.ref or "?", nd.pin_name))
+            elif nd.ref:
+                passive_named.append((nd.ref or "?", nd.pin_number or "?"))
+
+        # Prefer IC pin names
+        if ic_named:
+            ref, pin_name = ic_named[0]
+            return f"Net-({ref}-{pin_name})"
+
+        # Fallback to passive pin
+        if passive_named:
+            ref, pin_num = passive_named[0]
+            return f"Net-({ref}-Pad{pin_num})"
+
+        return None
+
+    # ----------------------------------------------------------------
     # Net type classification
     # ----------------------------------------------------------------
 
@@ -690,6 +797,10 @@ class KiCadSexprConnectivityProvider(ConnectivityProvider):
 
         # Auto-generated net
         if name.startswith("N$"):
+            return "signal"
+
+        # Synthesized net names are signal-type
+        if name.startswith("Net-("):
             return "signal"
 
         # Ground family

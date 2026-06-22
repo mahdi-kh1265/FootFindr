@@ -1,12 +1,13 @@
-"""Capacitor role classification — softmax model (M9.4B).
+"""Capacitor role classification — softmax model (M9.5).
 
 Classifies capacitor roles using a softmax log-likelihood model over
 a set of hypotheses (roles).  Each role has a feature weight vector
 that produces a log-likelihood from observed evidence features.
 
-Hypothesis set:
-    rail_decoupling, bulk, dc_block, rc_filter,
-    timing_compensation, crystal_rf, unknown
+Hypothesis set (10 roles):
+    rail_input_decoupling, rail_output_cap, regulator_stability_output_cap,
+    set_or_adjust_pin_cap, noise_reduction_cap, feedback_or_compensation_cap,
+    generic_shunt_cap, dc_block, rc_filter, unknown_review
 
 Final confidence:
     P(h|E) = exp(L_h) / sum_k(exp(L_k))
@@ -33,42 +34,57 @@ logger = logging.getLogger("footfindr.intelligence.cap_classifier")
 # Model version
 # ---------------------------------------------------------------------------
 
-_MODEL_VERSION = "softmax_cap_v1"
+_MODEL_VERSION = "softmax_cap_v2"
 
 
 # ---------------------------------------------------------------------------
-# Role hypothesis set
+# Role hypothesis set (M9.5 expanded — 10 roles)
 # ---------------------------------------------------------------------------
 
 ROLES = [
-    "rail_decoupling",
-    "bulk",
+    "rail_input_decoupling",
+    "rail_output_cap",
+    "regulator_stability_output_cap",
+    "set_or_adjust_pin_cap",
+    "noise_reduction_cap",
+    "feedback_or_compensation_cap",
+    "generic_shunt_cap",
     "dc_block",
     "rc_filter",
-    "timing_compensation",
-    "crystal_rf",
-    "unknown",
+    "unknown_review",
 ]
 
 
 # ---------------------------------------------------------------------------
-# Feature names
+# Feature names (M9.5 expanded — 15 features)
 # ---------------------------------------------------------------------------
 
 FEATURE_NAMES = [
-    "x_pin_complete",       # resolved_pins / expected_pins
-    "x_has_ground",         # binary: cap has a ground pin
-    "x_ground_confidence",  # net parser confidence for the ground connection
-    "x_has_rail",           # binary: cap has a power rail pin
-    "x_rail_confidence",    # rail scanner confidence
-    "x_value_decoupling",   # plausibility for decoupling range (100pF-100uF)
-    "x_value_bulk",         # plausibility for bulk range (>10uF)
-    "x_series_signal",      # evidence for signal-to-signal (two signal nets)
-    "x_rc_neighbors",       # evidence for neighboring R on same signal net
-    "x_power_neighbors",    # evidence for IC power pins on same net
-    "x_parser_confidence",  # net parser completeness
-    "x_ambiguity",          # conflict/ambiguity score
+    "x_pin_complete",           # resolved_pins / expected_pins
+    "x_has_ground",             # binary: cap has a ground pin
+    "x_ground_confidence",      # net parser confidence for the ground connection
+    "x_has_rail",               # binary: cap has a named power rail pin (+5V, +3V3, VDD, etc.)
+    "x_rail_confidence",        # rail scanner confidence
+    "x_value_decoupling",       # plausibility for decoupling range (100pF-100uF)
+    "x_value_bulk",             # plausibility for bulk range (>10uF)
+    "x_series_signal",          # evidence for signal-to-signal (two signal nets, no GND)
+    "x_rc_neighbors",           # evidence for neighboring R on same signal net
+    "x_power_neighbors",        # evidence for IC power pins on same net
+    "x_parser_confidence",      # net parser completeness
+    "x_ambiguity",              # conflict/ambiguity score
+    "x_has_regulator_output",   # non-ground pin on a net with an IC OUT/VOUT pin
+    "x_has_set_or_adj_pin",     # non-ground pin on a net with IC SET/ADJ/FB/NR/BYP pin
+    "x_is_shunt_to_gnd",        # one pin is GND, other is non-power signal or synthesized net
 ]
+
+# Pin name patterns used to detect regulator output and SET/ADJ pin context
+_REGULATOR_OUTPUT_PIN_PATTERNS = frozenset({
+    "OUT", "VOUT", "OUTPUT", "VO", "SW",
+})
+_SET_ADJ_PIN_PATTERNS = frozenset({
+    "SET", "ADJ", "ADJUST", "FB", "FEEDBACK", "NR", "BYP", "BYPASS",
+    "COMP", "SS", "SOFTSTART", "CT", "RT",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -78,12 +94,12 @@ FEATURE_NAMES = [
 # Positive beta = evidence for this role. Negative = evidence against.
 
 _ROLE_WEIGHTS: dict[str, dict[str, float]] = {
-    "rail_decoupling": {
+    "rail_input_decoupling": {
         "bias": -1.0,
         "x_pin_complete": 3.0,
         "x_has_ground": 3.0,
         "x_ground_confidence": 1.0,
-        "x_has_rail": 3.0,
+        "x_has_rail": 3.5,           # MUST have a named power rail
         "x_rail_confidence": 2.0,
         "x_value_decoupling": 2.0,
         "x_value_bulk": -0.5,
@@ -92,21 +108,117 @@ _ROLE_WEIGHTS: dict[str, dict[str, float]] = {
         "x_power_neighbors": 1.0,
         "x_parser_confidence": 1.0,
         "x_ambiguity": -2.0,
+        "x_has_regulator_output": -4.0,  # NOT for output nets
+        "x_has_set_or_adj_pin": -4.0,    # NOT for SET/ADJ nets
+        "x_is_shunt_to_gnd": -1.0,
     },
-    "bulk": {
+    "rail_output_cap": {
         "bias": -2.0,
+        "x_pin_complete": 2.5,
+        "x_has_ground": 3.0,
+        "x_ground_confidence": 1.0,
+        "x_has_rail": -1.0,           # typically NOT a named rail (synthesized net)
+        "x_rail_confidence": -0.5,
+        "x_value_decoupling": 1.5,
+        "x_value_bulk": 1.5,
+        "x_series_signal": -3.0,
+        "x_rc_neighbors": -1.0,
+        "x_power_neighbors": 0.5,
+        "x_parser_confidence": 1.0,
+        "x_ambiguity": -2.0,
+        "x_has_regulator_output": 4.0,   # strong evidence: IC output pin
+        "x_has_set_or_adj_pin": -2.0,
+        "x_is_shunt_to_gnd": 1.0,
+    },
+    "regulator_stability_output_cap": {
+        "bias": -3.0,
+        "x_pin_complete": 2.5,
+        "x_has_ground": 3.0,
+        "x_ground_confidence": 1.0,
+        "x_has_rail": -1.0,
+        "x_rail_confidence": -0.5,
+        "x_value_decoupling": 1.0,
+        "x_value_bulk": 2.0,
+        "x_series_signal": -3.0,
+        "x_rc_neighbors": -1.0,
+        "x_power_neighbors": 0.5,
+        "x_parser_confidence": 1.0,
+        "x_ambiguity": -2.0,
+        "x_has_regulator_output": 3.5,
+        "x_has_set_or_adj_pin": -2.0,
+        "x_is_shunt_to_gnd": 1.0,
+    },
+    "set_or_adjust_pin_cap": {
+        "bias": -3.0,
+        "x_pin_complete": 2.5,
+        "x_has_ground": 2.5,
+        "x_ground_confidence": 0.5,
+        "x_has_rail": -2.0,           # NOT a named rail
+        "x_rail_confidence": -1.0,
+        "x_value_decoupling": 1.0,
+        "x_value_bulk": -2.0,
+        "x_series_signal": -2.0,
+        "x_rc_neighbors": 0.5,
+        "x_power_neighbors": -1.0,
+        "x_parser_confidence": 1.0,
+        "x_ambiguity": -1.0,
+        "x_has_regulator_output": -2.0,
+        "x_has_set_or_adj_pin": 4.5,    # strong evidence: SET/ADJ pin
+        "x_is_shunt_to_gnd": 1.5,
+    },
+    "noise_reduction_cap": {
+        "bias": -4.0,
+        "x_pin_complete": 2.0,
+        "x_has_ground": 2.0,
+        "x_ground_confidence": 0.5,
+        "x_has_rail": -1.5,
+        "x_rail_confidence": -0.5,
+        "x_value_decoupling": 0.5,
+        "x_value_bulk": -2.0,
+        "x_series_signal": -1.0,
+        "x_rc_neighbors": 1.0,
+        "x_power_neighbors": -1.0,
+        "x_parser_confidence": 1.0,
+        "x_ambiguity": -1.0,
+        "x_has_regulator_output": -1.0,
+        "x_has_set_or_adj_pin": 2.5,    # NR/BYP pins contribute here too
+        "x_is_shunt_to_gnd": 2.0,
+    },
+    "feedback_or_compensation_cap": {
+        "bias": -4.0,
+        "x_pin_complete": 2.0,
+        "x_has_ground": -0.5,
+        "x_ground_confidence": 0.0,
+        "x_has_rail": -1.5,
+        "x_rail_confidence": -0.5,
+        "x_value_decoupling": 0.0,
+        "x_value_bulk": -3.0,
+        "x_series_signal": 2.0,
+        "x_rc_neighbors": 1.5,
+        "x_power_neighbors": -1.0,
+        "x_parser_confidence": 1.0,
+        "x_ambiguity": -1.0,
+        "x_has_regulator_output": 0.5,
+        "x_has_set_or_adj_pin": 3.0,    # FB/COMP pins
+        "x_is_shunt_to_gnd": 0.0,
+    },
+    "generic_shunt_cap": {
+        "bias": -1.5,
         "x_pin_complete": 2.0,
         "x_has_ground": 2.5,
         "x_ground_confidence": 0.5,
-        "x_has_rail": 2.5,
-        "x_rail_confidence": 1.5,
-        "x_value_decoupling": 0.5,
-        "x_value_bulk": 3.0,
-        "x_series_signal": -3.0,
-        "x_rc_neighbors": -1.0,
-        "x_power_neighbors": 1.5,
+        "x_has_rail": -2.0,           # NOT a named rail
+        "x_rail_confidence": -1.0,
+        "x_value_decoupling": 1.0,
+        "x_value_bulk": -0.5,
+        "x_series_signal": -2.0,
+        "x_rc_neighbors": -0.5,
+        "x_power_neighbors": -0.5,
         "x_parser_confidence": 1.0,
-        "x_ambiguity": -2.0,
+        "x_ambiguity": -1.0,
+        "x_has_regulator_output": -1.0,
+        "x_has_set_or_adj_pin": -1.0,
+        "x_is_shunt_to_gnd": 3.0,       # strong: any signal + GND
     },
     "dc_block": {
         "bias": -2.0,
@@ -122,6 +234,9 @@ _ROLE_WEIGHTS: dict[str, dict[str, float]] = {
         "x_power_neighbors": -1.0,
         "x_parser_confidence": 1.0,
         "x_ambiguity": -1.0,
+        "x_has_regulator_output": -1.0,
+        "x_has_set_or_adj_pin": -1.0,
+        "x_is_shunt_to_gnd": -3.0,
     },
     "rc_filter": {
         "bias": -3.0,
@@ -137,38 +252,11 @@ _ROLE_WEIGHTS: dict[str, dict[str, float]] = {
         "x_power_neighbors": -1.0,
         "x_parser_confidence": 1.0,
         "x_ambiguity": -1.0,
+        "x_has_regulator_output": -1.0,
+        "x_has_set_or_adj_pin": -0.5,
+        "x_is_shunt_to_gnd": 0.0,
     },
-    "timing_compensation": {
-        "bias": -4.0,
-        "x_pin_complete": 1.5,
-        "x_has_ground": -1.0,
-        "x_ground_confidence": 0.0,
-        "x_has_rail": -1.0,
-        "x_rail_confidence": 0.0,
-        "x_value_decoupling": -1.0,
-        "x_value_bulk": -3.0,
-        "x_series_signal": 2.0,
-        "x_rc_neighbors": 1.0,
-        "x_power_neighbors": -1.0,
-        "x_parser_confidence": 1.0,
-        "x_ambiguity": -1.0,
-    },
-    "crystal_rf": {
-        "bias": -5.0,
-        "x_pin_complete": 1.0,
-        "x_has_ground": 0.0,
-        "x_ground_confidence": 0.0,
-        "x_has_rail": -1.0,
-        "x_rail_confidence": 0.0,
-        "x_value_decoupling": -2.0,
-        "x_value_bulk": -3.0,
-        "x_series_signal": 1.0,
-        "x_rc_neighbors": -1.0,
-        "x_power_neighbors": -1.0,
-        "x_parser_confidence": 0.5,
-        "x_ambiguity": 0.0,
-    },
-    "unknown": {
+    "unknown_review": {
         "bias": 0.5,
         "x_pin_complete": -2.0,
         "x_has_ground": 0.0,
@@ -182,6 +270,9 @@ _ROLE_WEIGHTS: dict[str, dict[str, float]] = {
         "x_power_neighbors": 0.0,
         "x_parser_confidence": -1.0,
         "x_ambiguity": 2.0,
+        "x_has_regulator_output": 0.0,
+        "x_has_set_or_adj_pin": 0.0,
+        "x_is_shunt_to_gnd": 0.0,
     },
 }
 
@@ -372,6 +463,51 @@ def _extract_features(
     if len(gnd_pins) == 0 and len(rail_pins) == 0 and len(signal_pins) == 0:
         ambiguity += 0.2
     features["x_ambiguity"] = min(1.0, ambiguity)
+
+    # --- M9.5 new features: regulator output, SET/ADJ pin, shunt-to-GND ---
+
+    # x_has_regulator_output: check if any non-ground connection has an IC
+    # output pin in the same net (detected via net name or pin_name attribute)
+    has_reg_out = 0.0
+    for c in connections:
+        if _is_ground(c):
+            continue
+        # Check net name for synthesized regulator output pattern
+        net_upper = (c.net or "").upper()
+        if any(p in net_upper for p in _REGULATOR_OUTPUT_PIN_PATTERNS):
+            has_reg_out = 1.0
+            break
+        # Check pin_name on the connection itself (from lib_symbol)
+        pn = (c.pin_name or "").upper()
+        if pn in _REGULATOR_OUTPUT_PIN_PATTERNS:
+            has_reg_out = 1.0
+            break
+    features["x_has_regulator_output"] = has_reg_out
+
+    # x_has_set_or_adj_pin: check if any non-ground connection has a
+    # SET/ADJ/FB/NR/BYP pin in the same net
+    has_set_adj = 0.0
+    for c in connections:
+        if _is_ground(c):
+            continue
+        net_upper = (c.net or "").upper()
+        if any(p in net_upper for p in _SET_ADJ_PIN_PATTERNS):
+            has_set_adj = 1.0
+            break
+        pn = (c.pin_name or "").upper()
+        if pn in _SET_ADJ_PIN_PATTERNS:
+            has_set_adj = 1.0
+            break
+    features["x_has_set_or_adj_pin"] = has_set_adj
+
+    # x_is_shunt_to_gnd: one pin is GND, other pin is not a named power rail
+    is_shunt = 0.0
+    if gnd_pins and not rail_pins:
+        # Has GND but no named power rail → shunt cap to ground
+        non_gnd = [c for c in connections if not _is_ground(c)]
+        if non_gnd:
+            is_shunt = 1.0
+    features["x_is_shunt_to_gnd"] = is_shunt
 
     return features
 

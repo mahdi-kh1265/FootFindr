@@ -343,7 +343,7 @@ def _compute_role_fit(
     cap_farads: float | None,
 ) -> float:
     """Compute how well a package fits the detected role."""
-    if role in ("rail_decoupling", "bulk") and role_confidence > 0.5:
+    if role in ("rail_input_decoupling", "rail_output_cap", "regulator_stability_output_cap") and role_confidence > 0.5:
         # Decoupling/bulk caps benefit from larger packages at higher C
         if cap_farads and cap_farads > 1e-6:
             area = pkg.area_mm2 or 1.0
@@ -354,7 +354,7 @@ def _compute_role_fit(
         return 0.7 * role_confidence
     if role in ("dc_block", "rc_filter"):
         return 0.6 * role_confidence
-    return 0.5  # unknown role
+    return 0.5  # unknown_review or other role
 
 
 def _interaction_small_cv_risk(
